@@ -1,2 +1,13 @@
-TOKEN=YOUR_BOT_TOKEN
-CLIENT_ID=YOUR_APPLICATION_ID
+{
+  "name": "multi-striker",
+  "version": "1.0.0",
+  "description": "Multi Striker Discord Utility Bot",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.16.3",
+    "dotenv": "^16.4.5"
+  }
+}
