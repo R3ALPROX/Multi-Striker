@@ -23,120 +23,106 @@ client.commands = new Collection();
 
 const commands = [];
 
-const commandFiles = fs.readdirSync("./commands").filter(file => file.endsWith(".js"));
+// Load commands
+const commandFiles = fs
+    .readdirSync("./commands")
+    .filter(file => file.endsWith(".js"));
 
 for (const file of commandFiles) {
     const command = require(`./commands/${file}`);
+
+    if (!command.data || !command.execute) {
+        console.log(`⚠️ Invalid command file: ${file}`);
+        continue;
+    }
+
     client.commands.set(command.data.name, command);
     commands.push(command.data.toJSON());
+
+    console.log(`Loaded command: /${command.data.name}`);
 }
 
+// Register global slash commands
 const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
 
-(async () => {
+async function registerCommands() {
     try {
-        console.log("Registering slash commands...");
+        console.log("🔄 Registering global slash commands...");
 
         await rest.put(
             Routes.applicationCommands(process.env.CLIENT_ID),
-            { body: commands }
+            {
+                body: commands
+            }
         );
 
-        console.log("✅ Slash commands registered!");
-    } catch (err) {
-        console.error(err);
+        console.log("✅ Global slash commands registered!");
+    } catch (error) {
+        console.error("❌ Failed to register slash commands:");
+        console.error(error);
     }
-})();
+}
 
 client.once("ready", () => {
-    console.log(`✅ ${client.user.tag} is online.`);
+    console.log(`✅ ${client.user.tag} is online!`);
+    console.log(`📊 Servers: ${client.guilds.cache.size}`);
+    console.log(`⚡ Commands loaded: ${client.commands.size}`);
 });
 
+// Handle slash commands
 client.on("interactionCreate", async interaction => {
 
     if (!interaction.isChatInputCommand()) return;
 
     const command = client.commands.get(interaction.commandName);
 
-    if (!command) return;
+    if (!command) {
+        console.log(`❌ Unknown command: ${interaction.commandName}`);
+        return;
+    }
 
     try {
         await command.execute(interaction);
-    } catch (err) {
-        console.error(err);
+    } catch (error) {
+        console.error(
+            `❌ Error executing /${interaction.commandName}:`,
+            error
+        );
 
-        await interaction.reply({
-            content: "❌ An error occurred while executing this command.",
-            ephemeral: true
-        });
-    }
-
-});
-
-client.login(process.env.TOKEN);  try {
-
-    await rest.put(
-      Routes.applicationCommands(process.env.CLIENT_ID),
-      {
-        body: commands
-      }
-    );
-
-    console.log("Global slash commands registered.");
-
-  } catch (error) {
-
-    console.error(error);
-
-  }
-})();
-
-
-client.once("ready", () => {
-
-  console.log(`Logged in as ${client.user.tag}`);
-
-});
-
-
-client.on("interactionCreate", async interaction => {
-
-  if (!interaction.isChatInputCommand()) return;
-
-
-  if (interaction.commandName === "ping") {
-
-    return interaction.reply("🏓 Pong!");
-
-  }
-
-
-  if (interaction.commandName === "serverinfo") {
-
-    const embed = new EmbedBuilder()
-      .setTitle(interaction.guild.name)
-      .addFields(
-        {
-          name: "👥 Members",
-          value: `${interaction.guild.memberCount}`,
-          inline: true
-        },
-        {
-          name: "📁 Channels",
-          value: `${interaction.guild.channels.cache.size}`,
-          inline: true
+        if (interaction.replied || interaction.deferred) {
+            await interaction.followUp({
+                content: "❌ Something went wrong while executing this command.",
+                ephemeral: true
+            });
+        } else {
+            await interaction.reply({
+                content: "❌ Something went wrong while executing this command.",
+                ephemeral: true
+            });
         }
-      )
-      .setColor(0x5865F2);
-
-
-    return interaction.reply({
-      embeds: [embed]
-    });
-
-  }
-
+    }
 });
 
+// Start bot
+async function startBot() {
+    try {
+        if (!process.env.TOKEN) {
+            throw new Error("TOKEN is missing from environment variables.");
+        }
 
-client.login(process.env.TOKEN);
+        if (!process.env.CLIENT_ID) {
+            throw new Error("CLIENT_ID is missing from environment variables.");
+        }
+
+        await registerCommands();
+
+        await client.login(process.env.TOKEN);
+
+    } catch (error) {
+        console.error("❌ Failed to start Multi Striker:");
+        console.error(error);
+        process.exit(1);
+    }
+}
+
+startBot();
