@@ -43,7 +43,7 @@ for (const file of commandFiles) {
 }
 
 // Register global slash commands
-const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
+const rest = new REST({ version: "10" }).setToken(process.env.DISCORD_TOKEN);
 
 async function registerCommands() {
     try {
@@ -106,7 +106,7 @@ client.on("interactionCreate", async interaction => {
 // Start bot
 async function startBot() {
     try {
-        if (!process.env.TOKEN) {
+        if (!process.env.DISCORD_TOKEN) {
             throw new Error("TOKEN is missing from environment variables.");
         }
 
