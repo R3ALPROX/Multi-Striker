@@ -116,7 +116,7 @@ async function startBot() {
 
         await registerCommands();
 
-        await client.login(process.env.TOKEN);
+        await client.login(process.env.DISCORD_TOKEN);
 
     } catch (error) {
         console.error("❌ Failed to start Multi Striker:");
