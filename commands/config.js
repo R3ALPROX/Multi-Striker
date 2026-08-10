@@ -1,7 +1,12 @@
 const {
     SlashCommandBuilder,
     PermissionFlagsBits,
-    ChannelType
+    ChannelType,
+    EmbedBuilder,
+    ActionRowBuilder,
+    ButtonBuilder,
+    ButtonStyle,
+    MessageFlags
 } = require("discord.js");
 
 const {
@@ -13,9 +18,15 @@ const {
     runSecurityAudit
 } = require("../core/securityAudit");
 
+
 module.exports = {
 
+    // =========================================================
+    // COMMAND DEFINITION
+    // =========================================================
+
     data: new SlashCommandBuilder()
+
         .setName("config")
         .setDescription("Configure Multi Striker")
 
@@ -23,9 +34,10 @@ module.exports = {
             PermissionFlagsBits.Administrator
         )
 
-        // ==========================================
+
+        // =====================================================
         // /config security
-        // ==========================================
+        // =====================================================
 
         .addSubcommand(sub =>
             sub
@@ -35,9 +47,10 @@ module.exports = {
                 )
         )
 
-        // ==========================================
+
+        // =====================================================
         // /config log
-        // ==========================================
+        // =====================================================
 
         .addSubcommand(sub =>
             sub
@@ -102,18 +115,21 @@ module.exports = {
                     option
                         .setName("channel")
                         .setDescription(
-                            "Channel where logs will be sent"
+                            "Channel where these logs will be sent"
                         )
+
                         .addChannelTypes(
                             ChannelType.GuildText
                         )
+
                         .setRequired(true)
                 )
         )
 
-        // ==========================================
+
+        // =====================================================
         // /config temporary
-        // ==========================================
+        // =====================================================
 
         .addSubcommand(sub =>
             sub
@@ -128,16 +144,19 @@ module.exports = {
                         .setDescription(
                             "Category for temporary channels"
                         )
+
                         .addChannelTypes(
                             ChannelType.GuildCategory
                         )
+
                         .setRequired(true)
                 )
         )
 
-        // ==========================================
+
+        // =====================================================
         // /config view
-        // ==========================================
+        // =====================================================
 
         .addSubcommand(sub =>
             sub
@@ -147,306 +166,482 @@ module.exports = {
                 )
         ),
 
+
+    // =========================================================
+    // EXECUTE
+    // =========================================================
+
     async execute(interaction) {
 
-        // ==========================================
+        // =====================================================
         // SERVER CHECK
-        // ==========================================
+        // =====================================================
 
         if (!interaction.guild) {
+
             return interaction.reply({
                 content:
-                    "❌ This command can only be used in a server.",
-                ephemeral: true
+                    "❌ This command can only be used inside a server.",
+
+                flags:
+                    MessageFlags.Ephemeral
             });
         }
 
-        // ==========================================
+
+        // =====================================================
         // ADMIN CHECK
-        // ==========================================
+        // =====================================================
 
         if (
             !interaction.memberPermissions.has(
                 PermissionFlagsBits.Administrator
             )
         ) {
+
             return interaction.reply({
                 content:
-                    "❌ You need the **Administrator** permission.",
-                ephemeral: true
+                    "❌ You need the **Administrator** permission to use this command.",
+
+                flags:
+                    MessageFlags.Ephemeral
             });
         }
+
 
         const subcommand =
             interaction.options.getSubcommand();
 
-        // ==========================================
+
+        // =====================================================
         // SECURITY AUDIT
-        // ==========================================
+        // =====================================================
 
         if (subcommand === "security") {
 
             await interaction.deferReply({
-                ephemeral: true
+                flags:
+                    MessageFlags.Ephemeral
             });
 
+
             try {
+
+                // -------------------------------------------------
+                // RUN SECURITY ENGINE
+                // -------------------------------------------------
 
                 const audit =
                     await runSecurityAudit(
                         interaction.guild
                     );
 
+
+                // -------------------------------------------------
+                // SAFE DEFAULTS
+                // -------------------------------------------------
+
+                const roles =
+                    Array.isArray(audit.roles)
+                        ? audit.roles.filter(
+                            role =>
+                                !role.managed
+                        )
+                        : [];
+
+
                 const highRisk =
-                    audit.roles.filter(
+                    roles.filter(
                         role =>
                             role.risk === "high"
                     );
 
+
                 const mediumRisk =
-                    audit.roles.filter(
+                    roles.filter(
                         role =>
                             role.risk === "medium"
                     );
 
+
                 const lowRisk =
-                    audit.roles.filter(
+                    roles.filter(
                         role =>
                             role.risk === "low"
                     );
 
-                const roleList =
-                    audit.roles
-                        .filter(
-                            role =>
-                                !role.managed
+
+                // -------------------------------------------------
+                // ROLE PAGINATION
+                //
+                // Page 0 = Overview
+                // Page 1 = Global Security
+                // Page 2+ = Roles
+                // -------------------------------------------------
+
+                const rolesPerPage = 5;
+
+
+                const rolePageCount =
+                    Math.max(
+                        1,
+                        Math.ceil(
+                            roles.length /
+                            rolesPerPage
                         )
-                        .slice(0, 15)
-                        .map(role => {
+                    );
 
-                            const riskIcon =
-                                role.risk === "high"
-                                    ? "🔴"
-                                    : role.risk === "medium"
-                                        ? "🟡"
-                                        : "🟢";
 
-                            const permissions =
-                                role.permissions.length
-                                    ? role.permissions.join(", ")
-                                    : "No dangerous permissions";
+                const lastPage =
+                    1 + rolePageCount;
 
-                            return (
-                                `${riskIcon} **${role.name}**\n` +
-                                `Members: ${role.memberCount} ` +
-                                `(${role.memberPercentage}%)\n` +
-                                `Likely purpose: ${role.context.likelyPurpose}\n` +
-                                `Permissions: ${permissions}`
+
+                let currentPage = 0;
+
+
+                // =================================================
+                // EMBED BUILDER
+                // =================================================
+
+                function createEmbed(page) {
+
+                    // =================================================
+                    // PAGE 0 — OVERVIEW
+                    // =================================================
+
+                    if (page === 0) {
+
+                        const score =
+                            Number(
+                                audit.score ?? 0
                             );
-                        })
-                        .join("\n\n");
 
-                const everyone =
-                    audit.everyone
-                        .dangerousPermissions
-                        .length
-                        ? audit.everyone
-                            .dangerousPermissions
-                            .join(", ")
-                        : "None";
 
-                const botStatus =
-                    audit.bot
-                        ? (
-                            `Highest role: **${audit.bot.highestRole}**\n` +
-                            `Administrator: **${
-                                audit.bot.administrator
-                                    ? "YES"
-                                    : "NO"
-                            }**`
-                        )
-                        : "Bot information unavailable.";
+                        let statusIcon =
+                            "🔴";
 
-                const report =
-                    `🛡️ **Multi Striker Security Audit**\n\n` +
 
-                    `### 📊 Overall Security\n` +
-                    `**Score:** ${audit.score}/100\n` +
-                    `**Status:** ${audit.status}\n\n` +
+                        if (score >= 90) {
 
-                    `### 🏠 Server\n` +
-                    `Members: **${audit.guild.memberCount}**\n` +
-                    `Roles: **${audit.guild.roleCount}**\n` +
-                    `Channels: **${audit.guild.channelCount}**\n\n` +
+                            statusIcon =
+                                "🟢";
 
-                    `### 🎭 Role Risk\n` +
-                    `🔴 High: **${highRisk.length}**\n` +
-                    `🟡 Medium: **${mediumRisk.length}**\n` +
-                    `🟢 Low: **${lowRisk.length}**\n\n` +
+                        } else if (score >= 75) {
 
-                    `### 👑 Administrator Access\n` +
-                    `Members with Administrator: **${audit.administrators.count}**\n\n` +
+                            statusIcon =
+                                "🟡";
 
-                    `### 🌐 @everyone\n` +
-                    `Dangerous permissions: **${everyone}**\n\n` +
+                        } else if (score >= 50) {
 
-                    `### 🤖 Bot\n` +
-                    `${botStatus}\n\n` +
+                            statusIcon =
+                                "🟠";
+                        }
 
-                    `### 📁 Channel Permissions\n` +
-                    `Channels with permission overrides: **${audit.channels.withPermissionOverrides}**\n\n` +
 
-                    `### 🔐 Role Analysis\n` +
-                    `${roleList || "No roles found."}`;
+                        const status =
+                            audit.status ||
+                            "Unknown";
 
-                await interaction.editReply({
-                    content: report
-                });
 
-            } catch (error) {
+                        const guild =
+                            audit.guild ||
+                            {};
 
-                console.error(
-                    "❌ Security audit failed:",
-                    error
-                );
 
-                await interaction.editReply({
-                    content:
-                        "❌ Security audit failed.\n\n" +
-                        "Check the bot console for the exact error."
-                });
-            }
+                        const administrators =
+                            audit.administrators ||
+                            {};
 
-            return;
-        }
 
-        // ==========================================
-        // LOG CONFIGURATION
-        // ==========================================
+                        const channels =
+                            audit.channels ||
+                            {};
 
-        if (subcommand === "log") {
 
-            const type =
-                interaction.options.getString(
-                    "type"
-                );
+                        return new EmbedBuilder()
 
-            const channel =
-                interaction.options.getChannel(
-                    "channel"
-                );
+                            .setTitle(
+                                "🛡️ Multi Striker Security Audit"
+                            )
 
-            updateGuildConfig(
-                interaction.guild.id,
-                {
-                    logs: {
-                        [type]: channel.id
+                            .setDescription(
+                                `${statusIcon} **${status}**\n\n` +
+                                "Multi Striker analyzed the server's security configuration, permissions, roles and channels."
+                            )
+
+                            .addFields(
+
+                                {
+                                    name:
+                                        "📊 Security Score",
+
+                                    value:
+                                        `**${score}/100**`,
+
+                                    inline:
+                                        true
+                                },
+
+                                {
+                                    name:
+                                        "👥 Members",
+
+                                    value:
+                                        `${guild.memberCount ?? interaction.guild.memberCount}`,
+
+                                    inline:
+                                        true
+                                },
+
+                                {
+                                    name:
+                                        "🎭 Roles",
+
+                                    value:
+                                        `${guild.roleCount ?? interaction.guild.roles.cache.size}`,
+
+                                    inline:
+                                        true
+                                },
+
+                                {
+                                    name:
+                                        "📁 Channels",
+
+                                    value:
+                                        `${guild.channelCount ?? interaction.guild.channels.cache.size}`,
+
+                                    inline:
+                                        true
+                                },
+
+                                {
+                                    name:
+                                        "🔴 High Risk",
+
+                                    value:
+                                        `${highRisk.length}`,
+
+                                    inline:
+                                        true
+                                },
+
+                                {
+                                    name:
+                                        "🟡 Medium Risk",
+
+                                    value:
+                                        `${mediumRisk.length}`,
+
+                                    inline:
+                                        true
+                                },
+
+                                {
+                                    name:
+                                        "🟢 Low Risk",
+
+                                    value:
+                                        `${lowRisk.length}`,
+
+                                    inline:
+                                        true
+                                },
+
+                                {
+                                    name:
+                                        "👑 Administrators",
+
+                                    value:
+                                        `${administrators.count ?? 0}`,
+
+                                    inline:
+                                        true
+                                },
+
+                                {
+                                    name:
+                                        "📁 Permission Overrides",
+
+                                    value:
+                                        `${channels.withPermissionOverrides ?? 0}`,
+
+                                    inline:
+                                        true
+                                }
+                            )
+
+                            .setFooter({
+                                text:
+                                    "Multi Striker • Security Dashboard"
+                            })
+
+                            .setTimestamp();
                     }
-                }
-            );
 
-            return interaction.reply({
-                content:
-                    `✅ **${type}** logs will now be sent to ${channel}.`,
-                ephemeral: true
-            });
-        }
 
-        // ==========================================
-        // TEMPORARY CHANNEL CONFIGURATION
-        // ==========================================
+                    // =================================================
+                    // PAGE 1 — GLOBAL SECURITY
+                    // =================================================
 
-        if (subcommand === "temporary") {
+                    if (page === 1) {
 
-            const category =
-                interaction.options.getChannel(
-                    "category"
-                );
+                        const everyone =
+                            audit.everyone ||
+                            {};
 
-            updateGuildConfig(
-                interaction.guild.id,
-                {
-                    temporaryChannels: {
-                        categoryId:
-                            category.id,
 
-                        enabled: true
+                        const dangerous =
+                            Array.isArray(
+                                everyone.dangerousPermissions
+                            )
+                                ? everyone.dangerousPermissions
+                                : [];
+
+
+                        const everyoneText =
+                            dangerous.length > 0
+                                ? dangerous
+                                    .slice(0, 15)
+                                    .map(
+                                        permission =>
+                                            `• \`${permission}\``
+                                    )
+                                    .join("\n")
+                                : "🟢 None detected.";
+
+
+                        const administrators =
+                            audit.administrators ||
+                            {};
+
+
+                        const adminMembers =
+                            Array.isArray(
+                                administrators.members
+                            )
+                                ? administrators.members
+                                : [];
+
+
+                        const adminText =
+                            adminMembers.length > 0
+
+                                ? adminMembers
+                                    .slice(0, 15)
+                                    .map(
+                                        member =>
+                                            `• ${member.name || member.username || member.id}`
+                                    )
+                                    .join("\n")
+
+                                : "🟢 No administrator accounts reported.";
+
+
+                        const bot =
+                            audit.bot ||
+                            {};
+
+
+                        const botText =
+                            bot
+                                ? (
+                                    `**Highest Role:** ${bot.highestRole || "Unknown"}\n` +
+                                    `**Administrator:** ${
+                                        bot.administrator
+                                            ? "⚠️ YES"
+                                            : "🟢 NO"
+                                    }`
+                                )
+                                : "Bot information unavailable.";
+
+
+                        return new EmbedBuilder()
+
+                            .setTitle(
+                                "🔐 Global Security"
+                            )
+
+                            .setDescription(
+                                "Server-wide permission and administrative security."
+                            )
+
+                            .addFields(
+
+                                {
+                                    name:
+                                        "🌐 @everyone Dangerous Permissions",
+
+                                    value:
+                                        everyoneText
+                                },
+
+                                {
+                                    name:
+                                        "👑 Administrator Accounts",
+
+                                    value:
+                                        adminText
+                                },
+
+                                {
+                                    name:
+                                        "🤖 Multi Striker",
+
+                                    value:
+                                        botText
+                                }
+                            )
+
+                            .setFooter({
+                                text:
+                                    "Multi Striker • Global Security"
+                            })
+
+                            .setTimestamp();
                     }
-                }
-            );
 
-            return interaction.reply({
-                content:
-                    `✅ Temporary channels enabled.\n\n` +
-                    `📁 Category: ${category}`,
-                ephemeral: true
-            });
-        }
 
-        // ==========================================
-        // VIEW CONFIGURATION
-        // ==========================================
+                    // =================================================
+                    // PAGE 2+ — ROLE ANALYSIS
+                    // =================================================
 
-        if (subcommand === "view") {
+                    const rolePage =
+                        page - 2;
 
-            const config =
-                getGuildConfig(
-                    interaction.guild.id
-                );
 
-            const temporary =
-                config.temporaryChannels || {};
+                    const start =
+                        rolePage *
+                        rolesPerPage;
 
-            const category =
-                temporary.categoryId
-                    ? `<#${temporary.categoryId}>`
-                    : "Not configured";
 
-            const logs = [];
-
-            if (config.logs) {
-
-                for (
-                    const [type, channelId]
-                    of Object.entries(
-                        config.logs
-                    )
-                ) {
-
-                    if (channelId) {
-
-                        logs.push(
-                            `• **${type}** → <#${channelId}>`
+                    const pageRoles =
+                        roles.slice(
+                            start,
+                            start + rolesPerPage
                         );
-                    }
-                }
-            }
 
-            return interaction.reply({
-                content:
-                    `## ⚙️ Multi Striker Configuration\n\n` +
 
-                    `### 🔐 Security\n` +
-                    `Security auditing: **ON**\n` +
-                    `Permission verification: **ON**\n\n` +
+                    const embed =
+                        new EmbedBuilder()
 
-                    `### 🎙️ Temporary Channels\n` +
-                    `Enabled: **${
-                        temporary.enabled
-                            ? "YES"
-                            : "NO"
-                    }**\n` +
-                    `Category: ${category}\n\n` +
+                            .setTitle(
+                                `🎭 Role Analysis • Page ${rolePage + 1}/${rolePageCount}`
+                            )
 
-                    `### 📋 Logs\n` +
-                    (
-                        logs.length
-                            ? logs.join("\n")
-                            : "No logs configured."
-                    ),
+                            .setDescription(
+                                "Every normal server role is analyzed. Member count alone is not treated as a security violation; it is used as contextual information."
+                            )
 
-                ephemeral: true
-            });
-        }
-    }
-};
+                            .setFooter({
+                                text:
+                                    "Multi Striker • Contextual Role Analysis"
+                            });
+
+
+                    if (pageRoles.length === 0) {
+
+                        embed.addFields({
+                            name:
+                                "No roles",
+           
