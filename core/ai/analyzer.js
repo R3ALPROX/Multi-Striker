@@ -1,0 +1,4 @@
+// AI-ready contextual layer. Deterministic fallback keeps protection working without an external model.
+const { assess }=require("../intelligence/threatEngine");
+function analyzeContext(input){const signals=[];if(input.massActions)signals.push({weight:40,reason:"Mass destructive activity"});if(input.permissionEscalation)signals.push({weight:25,reason:"Permission escalation pattern"});if(input.targetedSecurityBot)signals.push({weight:35,reason:"Security bot targeted"});if(input.raidBurst)signals.push({weight:30,reason:"Abnormal coordinated join burst"});const out=assess(signals);return{...out,action:out.risk>=80?"CONTAIN":out.risk>=60?"ALERT":out.risk>=35?"VERIFY":"MONITOR",source:"contextual-engine"};}
+module.exports={analyzeContext};
