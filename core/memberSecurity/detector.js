@@ -1,0 +1,5 @@
+const { assess }=require("../intelligence/threatEngine");
+const { add }=require("../intelligence/memory");
+const seen=new Map();
+async function inspectMember(member){const ageDays=(Date.now()-member.user.createdTimestamp)/86400000;const signals=[];if(ageDays<1)signals.push({weight:12,reason:"Very new account"});else if(ageDays<7)signals.push({weight:5,reason:"New account"});const key=member.guild.id+":"+member.id;const n=(seen.get(key)||0)+1;seen.set(key,n);if(n>2)signals.push({weight:10,reason:"Repeated join history observed"});const result=assess(signals);add(member.guild.id,{type:"member_join",memberId:member.id,risk:result.risk});return{...result,ageDays:Math.floor(ageDays),action:result.risk>=60?"MONITOR_CLOSELY":result.risk>=35?"OCCASIONAL_VERIFY":"NONE"};}
+module.exports={inspectMember};
