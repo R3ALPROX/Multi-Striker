@@ -1,0 +1,5 @@
+const { AuditLogEvent,PermissionFlagsBits }=require("discord.js");
+const { getGuildConfig }=require("../../config/manager");
+const DANGEROUS=PermissionFlagsBits.Administrator|PermissionFlagsBits.ManageGuild|PermissionFlagsBits.ManageRoles|PermissionFlagsBits.ManageChannels|PermissionFlagsBits.BanMembers|PermissionFlagsBits.KickMembers|PermissionFlagsBits.ManageWebhooks;
+async function inspectRolePermissionChange(entry,guild){const cfg=getGuildConfig(guild.id);if(!cfg.antinuke.strictPermissions)return;const perms=BigInt(entry.changes?.find(c=>c.key==="permissions")?.new_value||0);if((perms&DANGEROUS)===0n)return;const executor=entry.executorId;if(!executor)return;const {processSecurityAction}=require("./detector");await processSecurityAction(guild,executor,"dangerousPermission",entry.targetId);}
+module.exports={inspectRolePermissionChange};
