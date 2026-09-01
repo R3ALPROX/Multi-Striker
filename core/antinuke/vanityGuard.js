@@ -1,0 +1,4 @@
+const { sendLog,securityEmbed }=require("../security/logger");
+const seen=new Map();
+function registerVanityGuard(client){client.on("guildUpdate",async(oldGuild,newGuild)=>{try{const before=seen.get(newGuild.id)||oldGuild.vanityURLCode||null;const after=newGuild.vanityURLCode||null;if(before&&before!==after)await sendLog(newGuild,"security",securityEmbed("Vanity URL changed","Previous tracked vanity code no longer matches the server.",[{name:"Previous",value:before},{name:"Current",value:after||"None"}]));seen.set(newGuild.id,after);}catch(e){console.error("Vanity guard:",e);}});}
+module.exports={registerVanityGuard};
