@@ -1,13 +1,1 @@
-const { getSnapshot }=require("./snapshot");
-// Deliberately dry-run by default: restoration must be owner-approved by a future command.
-function buildRestorePlan(guildId){
- const snapshot=getSnapshot(guildId);
- if(!snapshot)return null;
- return {
-   takenAt:snapshot.takenAt,
-   rolesToReview:snapshot.roles?.length||0,
-   channelsToReview:snapshot.channels?.length||0,
-   mode:"OWNER_APPROVAL_REQUIRED"
- };
-}
-module.exports={buildRestorePlan};
+const { getSnapshot }=require("./snapshot");function buildRestorePlan(guildId){const s=getSnapshot(guildId);if(!s)return null;return{takenAt:s.takenAt,rolesToReview:s.roles?.length||0,channelsToReview:s.channels?.length||0,mode:"SAFE_RESTORE_MISSING_ONLY"};}async function restoreMissing(guild,reason="Multi Striker emergency recovery"){const s=getSnapshot(guild.id);if(!s)return{ok:false,message:"No snapshot"};const created={roles:0,channels:0,errors:[]},rn=new Set(guild.roles.cache.map(r=>r.name)),cn=new Set(guild.channels.cache.map(c=>c.name));for(const r of [...s.roles].sort((a,b)=>a.position-b.position)){if(rn.has(r.name))continue;try{await guild.roles.create({name:r.name,color:r.color,permissions:BigInt(r.permissions),hoist:r.hoist,mentionable:r.mentionable,reason});created.roles++;}catch{created.errors.push("role:"+r.name);}}for(const c of s.channels){if(cn.has(c.name))continue;try{await guild.channels.create({name:c.name,type:c.type,topic:c.topic,nsfw:c.nsfw,rateLimitPerUser:c.rateLimitPerUser,reason});created.channels++;}catch{created.errors.push("channel:"+c.name);}}return{ok:true,created};}module.exports={buildRestorePlan,restoreMissing};
