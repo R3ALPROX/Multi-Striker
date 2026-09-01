@@ -1,0 +1,4 @@
+const { addHeat }=require("./heat");
+const recent=new Map();
+function checkMessage(message){if(message.author.bot)return null;const key=message.guild.id+":"+message.author.id;const now=Date.now();const list=(recent.get(key)||[]).filter(x=>now-x.time<8000);list.push({time:now,content:message.content});recent.set(key,list);const reasons=[];let amount=0;if(list.length>=6){reasons.push("Rapid message burst");amount+=30;}if((message.mentions.users.size+message.mentions.roles.size)>=8){reasons.push("Mass mention");amount+=35;}const duplicate=list.filter(x=>x.content&&x.content===message.content).length;if(duplicate>=4){reasons.push("Repeated duplicate message");amount+=25;}if(!amount)return null;const heat=addHeat(message.guild.id,message.author.id,amount);return{heat,reasons,critical:heat>=100};}
+module.exports={checkMessage};
