@@ -1,0 +1,2 @@
+function assess(signals){let risk=0;const reasons=[];for(const s of signals){risk+=s.weight||0;if(s.reason)reasons.push(s.reason);}risk=Math.max(0,Math.min(100,risk));return{risk,level:risk>=80?"CRITICAL":risk>=60?"HIGH":risk>=35?"ELEVATED":risk>=15?"MEDIUM":"LOW",reasons};}
+module.exports={assess};
