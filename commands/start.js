@@ -73,12 +73,13 @@ module.exports = {
                 { name: "📜 Security Logs", value: logChannel.toString(), inline: true },
                 { name: "✅ Auto Verification", value: "Recommended — awaiting role selection", inline: true },
                 { name: "⚡ Automatic response", value: "Suspicious destructive activity can trigger automatic containment.", inline: false },
-                { name: "💡 Recommendation", value: "Multi Striker did not guess a member role. Verification is ready to be enabled once a suitable verified/member role is confirmed.", inline: false }
+                { name: "🧠 Context Engine", value: "Active — role, permission, member and event patterns are analyzed automatically.", inline: false }
             )
             .setTimestamp();
 
         if (audit) {
             embed.addFields({ name: "🔍 Initial Security Scan", value: "Score: **" + audit.score + "/100** • Status: **" + audit.status + "**" });
+            if (audit.recommendations?.length) embed.addFields({ name: "💡 Top Contextual Recommendation", value: audit.recommendations[0].role + ": " + audit.recommendations[0].reasons.join(", ") });
         }
 
         await logChannel.send({ embeds: [embed] });
