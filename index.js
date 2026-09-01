@@ -7,6 +7,8 @@ const { registerAntiNukeEvents } = require("./core/antinuke/events");
 const { registerAntiRaidEvents } = require("./core/antiraid/events");
 const { registerVerificationEvents } = require("./core/verification/events");
 const { recordFailure } = require("./core/failsafe/failsafe");
+const { startBackupScheduler } = require("./core/backups/scheduler");
+const { inspectRolePermissionChange } = require("./core/antinuke/strictPermissions");
 
 const client = new Client({
     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildModeration],
@@ -67,6 +69,10 @@ async function start() {
     registerAntiNukeEvents(client);
     registerAntiRaidEvents(client);
     registerVerificationEvents(client);
+    startBackupScheduler(client);
+    client.on("guildAuditLogEntryCreate", async (entry, guild) => {
+        try { if (entry.action === 31) await inspectRolePermissionChange(entry, guild); } catch (error) { console.error("Strict permission monitor:", error); }
+    });
     await client.login(process.env.DISCORD_TOKEN);
 }
 
