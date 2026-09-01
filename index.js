@@ -37,6 +37,7 @@ function loadCommands() {
                 console.warn(`Invalid command file: ${file}`);
                 continue;
             }
+
             client.commands.set(command.data.name, command);
             payload.push(command.data.toJSON());
             console.log(`Loaded command: /${command.data.name}`);
@@ -52,11 +53,18 @@ const commandPayload = loadCommands();
 
 async function registerCommands() {
     const rest = new REST({ version: "10" }).setToken(process.env.DISCORD_TOKEN);
-    await rest.put(
-        Routes.applicationCommands(process.env.CLIENT_ID),
-        { body: commandPayload }
+
+    const route = process.env.DEV_GUILD_ID
+        ? Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.DEV_GUILD_ID)
+        : Routes.applicationCommands(process.env.CLIENT_ID);
+
+    await rest.put(route, { body: commandPayload });
+
+    console.log(
+        process.env.DEV_GUILD_ID
+            ? `Registered ${commandPayload.length} development guild commands.`
+            : `Registered ${commandPayload.length} global slash commands.`
     );
-    console.log(`Registered ${commandPayload.length} global slash commands.`);
 }
 
 client.once("clientReady", () => {
@@ -78,9 +86,17 @@ client.on("interactionCreate", async interaction => {
         await command.execute(interaction);
     } catch (error) {
         console.error(`Command error /${interaction.commandName}:`, error);
-        const payload = { content: "An error occurred while running this command.", ephemeral: true };
-        if (interaction.replied || interaction.deferred) await interaction.followUp(payload);
-        else await interaction.reply(payload);
+
+        const payload = {
+            content: "An error occurred while running this command.",
+            ephemeral: true
+        };
+
+        if (interaction.replied || interaction.deferred) {
+            await interaction.followUp(payload).catch(() => {});
+        } else {
+            await interaction.reply(payload).catch(() => {});
+        }
     }
 });
 
@@ -89,9 +105,11 @@ async function start() {
     if (!process.env.CLIENT_ID) throw new Error("CLIENT_ID is missing.");
 
     await registerCommands();
+
     registerAntiNukeEvents(client);
     registerAntiRaidEvents(client);
     registerVerificationEvents(client);
+
     await client.login(process.env.DISCORD_TOKEN);
 }
 
