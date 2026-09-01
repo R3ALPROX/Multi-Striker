@@ -1,4 +1,6 @@
 const { PermissionFlagsBits } = require("discord.js");
+const { analyzePermissionGraph } = require("./permissionGraph");
+const { buildAuditRecommendations } = require("../intelligence/recommendations");
 
 const DANGEROUS = [
     "Administrator",
@@ -69,6 +71,7 @@ async function runSecurityAudit(guild) {
     const botPermissions = botMember ? permissionNames(botMember.permissions) : [];
 
     const status = score >= 85 ? "Strong" : score >= 65 ? "Needs attention" : "High risk";
+    const permissionGraph = analyzePermissionGraph(guild, members);
 
     return {
         score: Math.max(0, score),
@@ -90,7 +93,9 @@ async function runSecurityAudit(guild) {
             administrator: botMember?.permissions.has(PermissionFlagsBits.Administrator) || false,
             dangerousPermissions: botPermissions
         },
-        roles: roleResults
+        roles: roleResults,
+        permissionGraph,
+        recommendations: buildAuditRecommendations({ roles: roleResults })
     };
 }
 
