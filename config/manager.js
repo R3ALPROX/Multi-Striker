@@ -34,6 +34,9 @@ const DEFAULT_CONFIG = {
         raidModeMinutes: 10,
         minimumAccountAgeDays: 0
     },
+    joingate: { enabled: true, minimumAccountAgeMinutes: 0, requireAvatar: false, inviteInProfile: false },
+    automod: { enabled: true, heatThreshold: 100 },
+    backups: { enabled: true, intervalHours: 3 },
     verification: {
         enabled: false,
         channelId: null,
