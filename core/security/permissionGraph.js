@@ -1,0 +1,4 @@
+const { PermissionFlagsBits }=require("discord.js");
+const POWER=["Administrator","ManageRoles","ManageChannels","BanMembers","KickMembers","ManageWebhooks"];
+function analyzePermissionGraph(guild,members){const roles=[...guild.roles.cache.values()].filter(r=>!r.managed&&r.id!==guild.id);return roles.map(r=>{const dangerous=POWER.filter(p=>r.permissions.has(PermissionFlagsBits[p]));const holders=members.filter(m=>m.roles.cache.has(r.id)).size;return{name:r.name,id:r.id,holders,dangerous,position:r.position,exposure:dangerous.length*holders};}).filter(x=>x.dangerous.length).sort((a,b)=>b.exposure-a.exposure);}
+module.exports={analyzePermissionGraph};
