@@ -1,199 +1,119 @@
 require("dotenv").config();
 
 const fs = require("fs");
+const path = require("path");
 const {
     Client,
     Collection,
     GatewayIntentBits,
+    Partials,
     REST,
     Routes
 } = require("discord.js");
+
+const { registerAntiNukeEvents } = require("./core/antinuke/events");
+const { registerAntiRaidEvents } = require("./core/antiraid/events");
+const { registerVerificationEvents } = require("./core/verification/events");
 
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMembers,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.GuildVoiceStates,
-        GatewayIntentBits.MessageContent
-    ]
+        GatewayIntentBits.GuildModeration
+    ],
+    partials: [Partials.GuildMember]
 });
 
 client.commands = new Collection();
 
-const commands = [];
+function loadCommands() {
+    const commandsPath = path.join(__dirname, "commands");
+    const payload = [];
 
-// ================================
-// LOAD COMMANDS
-// ================================
+    for (const file of fs.readdirSync(commandsPath).filter(file => file.endsWith(".js"))) {
+        try {
+            const command = require(path.join(commandsPath, file));
+            if (!command.data || !command.execute) {
+                console.warn(`Invalid command file: ${file}`);
+                continue;
+            }
 
-const commandFiles = fs
-    .readdirSync("./commands")
-    .filter(file => file.endsWith(".js"));
-
-for (const file of commandFiles) {
-    try {
-        const command = require(`./commands/${file}`);
-
-        if (!command.data || !command.execute) {
-            console.log(`⚠️ Invalid command file: ${file}`);
-            continue;
+            client.commands.set(command.data.name, command);
+            payload.push(command.data.toJSON());
+            console.log(`Loaded command: /${command.data.name}`);
+        } catch (error) {
+            console.error(`Failed to load ${file}:`, error);
         }
-
-        client.commands.set(command.data.name, command);
-        commands.push(command.data.toJSON());
-
-        console.log(`✅ Loaded command: /${command.data.name}`);
-    } catch (error) {
-        console.error(`❌ Failed to load ${file}:`, error);
     }
+
+    return payload;
 }
 
-// ================================
-// DISCORD REST API
-// ================================
-
-const rest = new REST({ version: "10" })
-    .setToken(process.env.DISCORD_TOKEN);
-
-// ================================
-// REGISTER GLOBAL SLASH COMMANDS
-// ================================
+const commandPayload = loadCommands();
 
 async function registerCommands() {
-    try {
-        console.log("🔄 Registering global slash commands...");
+    const rest = new REST({ version: "10" }).setToken(process.env.DISCORD_TOKEN);
 
-        await rest.put(
-            Routes.applicationCommands(process.env.CLIENT_ID),
-            {
-                body: commands
-            }
-        );
+    const route = process.env.DEV_GUILD_ID
+        ? Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.DEV_GUILD_ID)
+        : Routes.applicationCommands(process.env.CLIENT_ID);
 
-        console.log("✅ Global slash commands registered!");
-    } catch (error) {
-        console.error("❌ Failed to register slash commands:");
-        console.error(error);
-    }
+    await rest.put(route, { body: commandPayload });
+
+    console.log(
+        process.env.DEV_GUILD_ID
+            ? `Registered ${commandPayload.length} development guild commands.`
+            : `Registered ${commandPayload.length} global slash commands.`
+    );
 }
 
-// ================================
-// BOT READY
-// ================================
-
-client.once("ready", () => {
-    console.log("");
+client.once("clientReady", () => {
     console.log("================================");
-    console.log("🚀 MULTI STRIKER IS ONLINE");
-    console.log("================================");
-    console.log(`🤖 Bot: ${client.user.tag}`);
-    console.log(`📊 Servers: ${client.guilds.cache.size}`);
-    console.log(`⚡ Commands: ${client.commands.size}`);
+    console.log("MULTI STRIKER IS ONLINE");
+    console.log(`Bot: ${client.user.tag}`);
+    console.log(`Servers: ${client.guilds.cache.size}`);
+    console.log(`Commands: ${client.commands.size}`);
     console.log("================================");
 });
 
-// ================================
-// SLASH COMMAND HANDLER
-// ================================
-
 client.on("interactionCreate", async interaction => {
-
     if (!interaction.isChatInputCommand()) return;
 
     const command = client.commands.get(interaction.commandName);
-
-    if (!command) {
-        console.log(
-            `❌ Unknown command: /${interaction.commandName}`
-        );
-        return;
-    }
+    if (!command) return;
 
     try {
-
         await command.execute(interaction);
-
     } catch (error) {
+        console.error(`Command error /${interaction.commandName}:`, error);
 
-        console.error(
-            `❌ Error executing /${interaction.commandName}:`,
-            error
-        );
+        const payload = {
+            content: "An error occurred while running this command.",
+            ephemeral: true
+        };
 
-        try {
-
-            if (interaction.replied || interaction.deferred) {
-
-                await interaction.followUp({
-                    content: "❌ Something went wrong while executing this command.",
-                    ephemeral: true
-                });
-
-            } else {
-
-                await interaction.reply({
-                    content: "❌ Something went wrong while executing this command.",
-                    ephemeral: true
-                });
-
-            }
-
-        } catch (replyError) {
-            console.error(
-                "❌ Could not send error message:",
-                replyError
-            );
+        if (interaction.replied || interaction.deferred) {
+            await interaction.followUp(payload).catch(() => {});
+        } else {
+            await interaction.reply(payload).catch(() => {});
         }
     }
 });
 
-// ================================
-// START BOT
-// ================================
+async function start() {
+    if (!process.env.DISCORD_TOKEN) throw new Error("DISCORD_TOKEN is missing.");
+    if (!process.env.CLIENT_ID) throw new Error("CLIENT_ID is missing.");
 
-async function startBot() {
+    await registerCommands();
 
-    try {
+    registerAntiNukeEvents(client);
+    registerAntiRaidEvents(client);
+    registerVerificationEvents(client);
 
-        // Check Discord token
-        if (!process.env.DISCORD_TOKEN) {
-            throw new Error(
-                "DISCORD_TOKEN is missing from environment variables."
-            );
-        }
-
-        // Check Application ID
-        if (!process.env.CLIENT_ID) {
-            throw new Error(
-                "CLIENT_ID is missing from environment variables."
-            );
-        }
-
-        console.log("🔐 Environment variables detected.");
-
-        // Register slash commands
-        await registerCommands();
-
-        // Login
-        console.log("🔄 Connecting to Discord...");
-
-        await client.login(process.env.DISCORD_TOKEN);
-
-    } catch (error) {
-
-        console.error("");
-        console.error("❌ FAILED TO START MULTI STRIKER");
-        console.error("--------------------------------");
-        console.error(error);
-        console.error("--------------------------------");
-
-        process.exit(1);
-    }
+    await client.login(process.env.DISCORD_TOKEN);
 }
 
-// ================================
-// START
-// ================================
-
-startBot();
+start().catch(error => {
+    console.error("FAILED TO START MULTI STRIKER:", error);
+    process.exit(1);
+});

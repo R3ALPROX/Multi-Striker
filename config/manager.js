@@ -4,125 +4,122 @@ const path = require("path");
 const DATA_DIR = path.join(__dirname, "..", "data");
 const CONFIG_FILE = path.join(DATA_DIR, "guilds.json");
 
-// Make sure data/ exists
-if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
+const DEFAULT_CONFIG = {
+    security: {
+        enabled: true,
+        alertChannelId: null,
+        trustedUserIds: [],
+        trustedRoleIds: [],
+        action: "strip_roles",
+        cooldownSeconds: 30
+    },
+    antinuke: {
+        enabled: true,
+        windowSeconds: 15,
+        thresholds: {
+            channelDelete: 3,
+            channelCreate: 5,
+            roleDelete: 3,
+            roleCreate: 5,
+            roleUpdate: 5,
+            ban: 4,
+            kick: 4,
+            webhookCreate: 3
+        }
+    },
+    antiraid: {
+        enabled: true,
+        joinThreshold: 10,
+        windowSeconds: 20,
+        raidModeMinutes: 10,
+        minimumAccountAgeDays: 0
+    },
+    verification: {
+        enabled: false,
+        channelId: null,
+        verifiedRoleId: null,
+        unverifiedRoleId: null
+    },
+    logs: {
+        security: null,
+        raid: null,
+        verification: null
+    }
+};
+
+function ensureStorage() {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+    if (!fs.existsSync(CONFIG_FILE)) fs.writeFileSync(CONFIG_FILE, "{}");
 }
 
-// Make sure configuration file exists
-if (!fs.existsSync(CONFIG_FILE)) {
-    fs.writeFileSync(CONFIG_FILE, "{}");
+function clone(value) {
+    return JSON.parse(JSON.stringify(value));
+}
+
+function deepMerge(target, source) {
+    for (const key of Object.keys(source || {})) {
+        const value = source[key];
+        if (value && typeof value === "object" && !Array.isArray(value)) {
+            if (!target[key] || typeof target[key] !== "object" || Array.isArray(target[key])) {
+                target[key] = {};
+            }
+            deepMerge(target[key], value);
+        } else {
+            target[key] = value;
+        }
+    }
+    return target;
 }
 
 function loadConfigs() {
+    ensureStorage();
     try {
-        return JSON.parse(
-            fs.readFileSync(CONFIG_FILE, "utf8")
-        );
+        const raw = fs.readFileSync(CONFIG_FILE, "utf8").trim();
+        return raw ? JSON.parse(raw) : {};
     } catch (error) {
-        console.error("❌ Failed to load guild configuration:", error);
+        console.error("Failed to load guild configuration:", error);
         return {};
     }
 }
 
 function saveConfigs(configs) {
-    try {
-        // Write atomically to reduce corruption risk.
-        const temporaryFile = `${CONFIG_FILE}.tmp`;
-
-        fs.writeFileSync(
-            temporaryFile,
-            JSON.stringify(configs, null, 2)
-        );
-
-        fs.renameSync(temporaryFile, CONFIG_FILE);
-    } catch (error) {
-        console.error("❌ Failed to save guild configuration:", error);
-        throw error;
-    }
+    ensureStorage();
+    const temporaryFile = `${CONFIG_FILE}.tmp`;
+    fs.writeFileSync(temporaryFile, JSON.stringify(configs, null, 2));
+    fs.renameSync(temporaryFile, CONFIG_FILE);
 }
 
 function getGuildConfig(guildId) {
     const configs = loadConfigs();
+    const current = configs[guildId] || {};
+    const merged = deepMerge(clone(DEFAULT_CONFIG), current);
 
-    if (!configs[guildId]) {
-        configs[guildId] = {
-            security: {
-                dangerousActionRoleId: null,
-                notificationRoleId: null
-            },
-
-            logs: {
-                moderation: null,
-                channels: null,
-                roles: null,
-                members: null,
-                messages: null,
-                voice: null,
-                bot: null,
-                temporaryChannels: null,
-                security: null,
-                backups: null
-            },
-
-            temporaryChannels: {
-                categoryId: null,
-                enabled: true
-            },
-
-            ai: {
-                enabled: false,
-                timeoutEnabled: true
-            }
-        };
-
+    if (JSON.stringify(current) !== JSON.stringify(merged)) {
+        configs[guildId] = merged;
         saveConfigs(configs);
     }
 
-    return configs[guildId];
+    return merged;
 }
 
 function updateGuildConfig(guildId, updates) {
     const configs = loadConfigs();
-
-    if (!configs[guildId]) {
-        getGuildConfig(guildId);
-        return updateGuildConfig(guildId, updates);
-    }
-
-    configs[guildId] = deepMerge(
-        configs[guildId],
-        updates
-    );
-
+    const current = deepMerge(clone(DEFAULT_CONFIG), configs[guildId] || {});
+    configs[guildId] = deepMerge(current, updates);
     saveConfigs(configs);
-
     return configs[guildId];
 }
 
-function deepMerge(target, source) {
-    for (const key of Object.keys(source)) {
-
-        if (
-            source[key] &&
-            typeof source[key] === "object" &&
-            !Array.isArray(source[key])
-        ) {
-            if (!target[key] || typeof target[key] !== "object") {
-                target[key] = {};
-            }
-
-            deepMerge(target[key], source[key]);
-
-        } else {
-            target[key] = source[key];
-        }
-    }
-
-    return target;
+function resetGuildConfig(guildId) {
+    const configs = loadConfigs();
+    configs[guildId] = clone(DEFAULT_CONFIG);
+    saveConfigs(configs);
+    return configs[guildId];
 }
 
 module.exports = {
+    DEFAULT_CONFIG,
     getGuildConfig,
-    updateGuildConfig
+    updateGuildConfig,
+    resetGuildConfig
 };
