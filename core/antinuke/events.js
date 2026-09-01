@@ -3,6 +3,8 @@ const { processSecurityAction } = require("./detector");
 const { inspectBotAction } = require("../botSecurity/behavior");
 const { analyzeContext } = require("../ai/analyzer");
 const { update } = require("../security/adaptiveLevel");
+const { inspectEscalation } = require("./escalation");
+const { inspectOverwriteChange } = require("./overwrites");
 
 const MAP = new Map([
     [AuditLogEvent.ChannelDelete, "channelDelete"], [AuditLogEvent.ChannelCreate, "channelCreate"],
@@ -15,6 +17,8 @@ function registerAntiNukeEvents(client) {
     client.on("guildAuditLogEntryCreate", async (entry, guild) => {
         try {
             const type = MAP.get(entry.action);
+            await inspectEscalation(entry, guild);
+            await inspectOverwriteChange(entry, guild);
             if (!type) return;
             const member = await guild.members.fetch(entry.executorId).catch(() => null);
             if (member?.user.bot) {
