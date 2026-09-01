@@ -6,6 +6,7 @@ const { Client, Collection, GatewayIntentBits, Partials, REST, Routes } = requir
 const { registerAntiNukeEvents } = require("./core/antinuke/events");
 const { registerAntiRaidEvents } = require("./core/antiraid/events");
 const { registerVerificationEvents } = require("./core/verification/events");
+const { recordFailure } = require("./core/failsafe/failsafe");
 
 const client = new Client({
     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildModeration],
@@ -51,6 +52,7 @@ client.on("interactionCreate", async interaction => {
         await command.execute(interaction);
     } catch (error) {
         console.error("Command error /" + interaction.commandName + ":", error);
+        if (interaction.guild) recordFailure(interaction.guild.id, "command:" + interaction.commandName, error);
         const payload = { content: "An error occurred while running this command.", ephemeral: true };
         if (interaction.replied || interaction.deferred) await interaction.followUp(payload).catch(() => {});
         else await interaction.reply(payload).catch(() => {});
