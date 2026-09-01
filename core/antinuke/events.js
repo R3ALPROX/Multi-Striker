@@ -10,7 +10,8 @@ const MAP = new Map([
     [AuditLogEvent.ChannelDelete, "channelDelete"], [AuditLogEvent.ChannelCreate, "channelCreate"],
     [AuditLogEvent.RoleDelete, "roleDelete"], [AuditLogEvent.RoleCreate, "roleCreate"],
     [AuditLogEvent.RoleUpdate, "roleUpdate"], [AuditLogEvent.MemberBanAdd, "ban"],
-    [AuditLogEvent.MemberKick, "kick"], [AuditLogEvent.WebhookCreate, "webhookCreate"]
+    [AuditLogEvent.MemberKick, "kick"], [AuditLogEvent.WebhookCreate, "webhookCreate"],
+    [AuditLogEvent.WebhookDelete, "webhookCreate"], [AuditLogEvent.IntegrationCreate, "integration"], [AuditLogEvent.IntegrationUpdate, "integration"], [AuditLogEvent.IntegrationDelete, "integration"]
 ]);
 
 function registerAntiNukeEvents(client) {
