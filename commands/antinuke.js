@@ -6,6 +6,17 @@ const {
 } = require("discord.js");
 const { getGuildConfig, updateGuildConfig } = require("../config/manager");
 
+const THRESHOLD_CHOICES = [
+    ["Channel create", "channelCreate"],
+    ["Channel delete", "channelDelete"],
+    ["Role create", "roleCreate"],
+    ["Role delete", "roleDelete"],
+    ["Role update", "roleUpdate"],
+    ["Member ban", "ban"],
+    ["Member kick", "kick"],
+    ["Webhook create", "webhookCreate"]
+];
+
 function ownerOnly(interaction) {
     return interaction.user.id === interaction.guild.ownerId;
 }
@@ -26,6 +37,16 @@ module.exports = {
                         { name: "Timeout", value: "timeout" },
                         { name: "Ban", value: "ban" }
                     ))
+        )
+        .addSubcommand(sub =>
+            sub.setName("threshold").setDescription("Set a destructive-action threshold")
+                .addStringOption(option => option.setName("type").setDescription("Action type").setRequired(true)
+                    .addChoices(...THRESHOLD_CHOICES.map(([name, value]) => ({ name, value }))))
+                .addIntegerOption(option => option.setName("count").setDescription("Actions allowed inside the window before containment").setRequired(true).setMinValue(2).setMaxValue(50))
+        )
+        .addSubcommand(sub =>
+            sub.setName("window").setDescription("Set anti-nuke detection window")
+                .addIntegerOption(option => option.setName("seconds").setDescription("Detection window in seconds").setRequired(true).setMinValue(3).setMaxValue(120))
         )
         .addSubcommand(sub =>
             sub.setName("trust-user").setDescription("Add or remove a trusted user")
@@ -52,9 +73,11 @@ module.exports = {
                         { name: "Enabled", value: config.antinuke.enabled ? "Yes" : "No", inline: true },
                         { name: "Containment", value: config.security.action, inline: true },
                         { name: "Window", value: config.antinuke.windowSeconds + " seconds", inline: true },
-                        { name: "Channel deletes", value: String(config.antinuke.thresholds.channelDelete), inline: true },
-                        { name: "Role deletes", value: String(config.antinuke.thresholds.roleDelete), inline: true },
-                        { name: "Bans", value: String(config.antinuke.thresholds.ban), inline: true }
+                        ...Object.entries(config.antinuke.thresholds).map(([key, value]) => ({
+                            name: key.replace(/([A-Z])/g, " $1"),
+                            value: String(value),
+                            inline: true
+                        }))
                     )
                     .setTimestamp()],
                 flags: MessageFlags.Ephemeral
@@ -67,7 +90,7 @@ module.exports = {
         }
 
         if (!ownerOnly(interaction)) {
-            return interaction.reply({ content: "Only the server owner can change containment actions or trusted identities.", flags: MessageFlags.Ephemeral });
+            return interaction.reply({ content: "Only the server owner can change thresholds, containment actions, or trusted identities.", flags: MessageFlags.Ephemeral });
         }
 
         if (sub === "action") {
@@ -76,14 +99,31 @@ module.exports = {
             return interaction.reply({ content: `Containment action set to **${type}**.`, flags: MessageFlags.Ephemeral });
         }
 
+        if (sub === "threshold") {
+            const type = interaction.options.getString("type", true);
+            const count = interaction.options.getInteger("count", true);
+            updateGuildConfig(interaction.guild.id, { antinuke: { thresholds: { [type]: count } } });
+            return interaction.reply({ content: `Threshold for **${type}** set to **${count}**.`, flags: MessageFlags.Ephemeral });
+        }
+
+        if (sub === "window") {
+            const seconds = interaction.options.getInteger("seconds", true);
+            updateGuildConfig(interaction.guild.id, { antinuke: { windowSeconds: seconds } });
+            return interaction.reply({ content: `Anti-nuke window set to **${seconds} seconds**.`, flags: MessageFlags.Ephemeral });
+        }
+
         const mode = interaction.options.getString("mode", true);
         const key = sub === "trust-user" ? "trustedUserIds" : "trustedRoleIds";
         const id = sub === "trust-user"
             ? interaction.options.getUser("user", true).id
             : interaction.options.getRole("role", true).id;
+
+        if (sub === "trust-role" && id === interaction.guild.id && mode === "add") {
+            return interaction.reply({ content: "You cannot trust the @everyone role.", flags: MessageFlags.Ephemeral });
+        }
+
         const list = [...config.security[key]];
         const index = list.indexOf(id);
-
         if (mode === "add" && index === -1) list.push(id);
         if (mode === "remove" && index !== -1) list.splice(index, 1);
 
