@@ -1,0 +1,3 @@
+const { getGuildConfig }=require("../../config/manager");
+async function inspectJoinGate(member){const cfg=getGuildConfig(member.guild.id).joingate;if(!cfg?.enabled)return{allowed:true,flags:[]};const flags=[];const ageMs=Date.now()-member.user.createdTimestamp;if(cfg.minimumAccountAgeMinutes&&ageMs<cfg.minimumAccountAgeMinutes*60000)flags.push("Account below minimum age");if(cfg.requireAvatar&&!member.user.avatar)flags.push("No custom avatar");if(cfg.inviteInProfile&&/discord\.gg\//i.test(member.user.globalName||""))flags.push("Possible invite in profile");return{allowed:flags.length===0,flags};}
+module.exports={inspectJoinGate};
