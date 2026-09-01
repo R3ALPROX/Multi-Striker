@@ -1,3 +1,13 @@
 const { getSnapshot }=require("./snapshot");
-async function restoreSnapshot(guild,{roles=true,channels=false}={}){const snap=getSnapshot(guild.id);if(!snap)throw new Error("No backup snapshot available");const report={rolesCreated:0,channelsCreated:0,errors:[]};if(roles){for(const role of snap.roles){try{if(guild.roles.cache.some(r=>r.name===role.name))continue;await guild.roles.create({name:role.name,color:role.color,permissions:BigInt(role.permissions),hoist:role.hoist,mentionable:role.mentionable,reason:"Multi Striker backup recovery"});report.rolesCreated++;}catch(e){report.errors.push("Role "+role.name+": "+e.message);}}}if(channels){for(const channel of snap.channels){try{if(guild.channels.cache.some(c=>c.name===channel.name&&c.type===channel.type))continue;await guild.channels.create({name:channel.name,type:channel.type,topic:channel.topic||undefined,nsfw:channel.nsfw,rateLimitPerUser:channel.rateLimitPerUser||0,reason:"Multi Striker backup recovery"});report.channelsCreated++;}catch(e){report.errors.push("Channel "+channel.name+": "+e.message);}}}return report;}
-module.exports={restoreSnapshot};
+// Deliberately dry-run by default: restoration must be owner-approved by a future command.
+function buildRestorePlan(guildId){
+ const snapshot=getSnapshot(guildId);
+ if(!snapshot)return null;
+ return {
+   takenAt:snapshot.takenAt,
+   rolesToReview:snapshot.roles?.length||0,
+   channelsToReview:snapshot.channels?.length||0,
+   mode:"OWNER_APPROVAL_REQUIRED"
+ };
+}
+module.exports={buildRestorePlan};
