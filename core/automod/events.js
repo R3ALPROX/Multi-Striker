@@ -1,0 +1,4 @@
+const { checkMessage }=require("./filters");
+const { sendLog,securityEmbed }=require("../security/logger");
+function registerAutoModEvents(client){client.on("messageCreate",async message=>{try{if(!message.guild)return;const result=checkMessage(message);if(!result)return;if(result.critical){await message.delete().catch(()=>{});await sendLog(message.guild,"security",securityEmbed("Automod critical heat","<@"+message.author.id+"> triggered: "+result.reasons.join(", "),[{name:"Heat",value:String(result.heat)}]));}}catch(e){console.error("Automod error:",e);}});}
+module.exports={registerAutoModEvents};
