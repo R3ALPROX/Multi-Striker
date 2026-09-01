@@ -2,6 +2,9 @@ const { getGuildConfig } = require("../../config/manager");
 const tracker = require("./tracker");
 const { isTrusted } = require("../security/trust");
 const { containMember, reportContainment } = require("./actions");
+const { quarantineMember } = require("../quarantine/manager");
+const { triggerPanic } = require("../panic/manager");
+const { recent } = require("../intelligence/memory");
 
 const ACTION_TO_THRESHOLD = {
     channelDelete: "channelDelete",
@@ -39,7 +42,12 @@ async function processSecurityAction(guild, executorId, actionType, targetId) {
 
     const reason = `Multi Striker anti-nuke: ${count} ${actionType} actions within ${config.antinuke.windowSeconds}s`;
     const result = await containMember(guild, executorId, reason);
-    await reportContainment(guild, executorId, actionType, count, result);
+    const quarantine = await quarantineMember(guild, executorId, reason).catch(()=>({ok:false}));
+    const recentDestructive = recent(guild.id, config.antinuke.windowSeconds * 1000).filter(e => e.type === "bot_action" && e.executorId === executorId).length;
+    if (count >= Math.max(threshold * 2, config.antinuke.panicThreshold || 3) || recentDestructive >= 5) {
+        await triggerPanic(guild, "Repeated destructive activity", { executorId, actionType, count });
+    }
+    await reportContainment(guild, executorId, actionType, count, { ...result, quarantine });
 
     console.warn("ANTI-NUKE:", { guild: guild.id, executorId, actionType, targetId, count, result });
 }
