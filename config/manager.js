@@ -15,6 +15,9 @@ const DEFAULT_CONFIG = {
     },
     antinuke: {
         enabled: true,
+        strictPermissions: true,
+        strictOverwrites: true,
+        panicThreshold: 3,
         windowSeconds: 15,
         thresholds: {
             channelDelete: 3,
@@ -24,7 +27,9 @@ const DEFAULT_CONFIG = {
             roleUpdate: 5,
             ban: 4,
             kick: 4,
-            webhookCreate: 3
+            webhookCreate: 3,
+            dangerousPermission: 1,
+            permissionOverwrite: 2
         }
     },
     antiraid: {
@@ -36,7 +41,7 @@ const DEFAULT_CONFIG = {
     },
     joingate: { enabled: true, minimumAccountAgeMinutes: 0, requireAvatar: false, inviteInProfile: false },
     automod: { enabled: true, heatThreshold: 100 },
-    backups: { enabled: true, intervalHours: 3 },
+    backups: { enabled: true, intervalHours: 3, keepVersions: 10, ownerApprovalRestore: true },
     verification: {
         enabled: false,
         channelId: null,
