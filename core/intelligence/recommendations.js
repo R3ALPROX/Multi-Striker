@@ -1,0 +1,3 @@
+function roleRecommendation(role){const issues=[];if(role.memberCount>=10&&role.dangerous?.length>=2)issues.push("Widely distributed privileged role");if(/member|verified|community/i.test(role.name)&&role.dangerous?.length)issues.push("Role purpose appears inconsistent with privileged permissions");return issues.length?{role:role.name,risk:role.level,reasons:issues}:null;}
+function buildAuditRecommendations(audit){return audit.roles.map(roleRecommendation).filter(Boolean).slice(0,10);}
+module.exports={buildAuditRecommendations};
