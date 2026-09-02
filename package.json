@@ -1,13 +1,8 @@
 {
-  "name": "multi-striker",
-  "version": "2.0.0",
-  "description": "Discord server security, anti-nuke, anti-raid and verification bot",
-  "main": "index.js",
-  "scripts": {
-    "start": "node index.js"
-  },
-  "dependencies": {
-    "discord.js": "^14.16.3",
-    "dotenv": "^16.4.5"
-  }
+  "name":"multi-striker",
+  "version":"2.1.0",
+  "description":"Discord server security, anti-nuke, anti-raid and verification bot",
+  "main":"index.js",
+  "scripts":{"start":"node index.js","test":"node --test"},
+  "dependencies":{"discord.js":"^14.16.3","dotenv":"^16.4.5"}
 }
