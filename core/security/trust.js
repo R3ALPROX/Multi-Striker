@@ -1,21 +1,3 @@
-const { getGuildConfig } = require("../../config/manager");
-
-async function isTrusted(guild, userId) {
-    if (!userId) return true;
-    if (userId === guild.ownerId) return true;
-    if (guild.client.user && userId === guild.client.user.id) return true;
-
-    const config = getGuildConfig(guild.id);
-    if (config.security.trustedUserIds.includes(userId)) return true;
-
-    try {
-        const member = await guild.members.fetch(userId);
-        return member.roles.cache.some(role =>
-            config.security.trustedRoleIds.includes(role.id)
-        );
-    } catch {
-        return false;
-    }
-}
-
-module.exports = { isTrusted };
+const {getGuildConfig}=require("../../config/manager");
+async function isTrusted(guild,userId){if(!userId)return true;if(userId===guild.client.user?.id)return true;const config=getGuildConfig(guild.id);if(userId===guild.ownerId)return true;if(config.security.trustedUserIds.includes(userId)||config.security.trustedBotIds.includes(userId))return true;try{const member=await guild.members.fetch(userId);return member.roles.cache.some(role=>config.security.trustedRoleIds.includes(role.id));}catch{return false;}}
+module.exports={isTrusted};
