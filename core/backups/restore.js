@@ -1,1 +1,20 @@
-const { getSnapshot }=require("./snapshot");function buildRestorePlan(guildId){const s=getSnapshot(guildId);if(!s)return null;return{takenAt:s.takenAt,rolesToReview:s.roles?.length||0,channelsToReview:s.channels?.length||0,mode:"SAFE_RESTORE_MISSING_ONLY"};}async function restoreMissing(guild,reason="Multi Striker emergency recovery"){const s=getSnapshot(guild.id);if(!s)return{ok:false,message:"No snapshot"};const created={roles:0,channels:0,errors:[]},rn=new Set(guild.roles.cache.map(r=>r.name)),cn=new Set(guild.channels.cache.map(c=>c.name));for(const r of [...s.roles].sort((a,b)=>a.position-b.position)){if(rn.has(r.name))continue;try{await guild.roles.create({name:r.name,color:r.color,permissions:BigInt(r.permissions),hoist:r.hoist,mentionable:r.mentionable,reason});created.roles++;}catch{created.errors.push("role:"+r.name);}}for(const c of s.channels){if(cn.has(c.name))continue;try{await guild.channels.create({name:c.name,type:c.type,topic:c.topic,nsfw:c.nsfw,rateLimitPerUser:c.rateLimitPerUser,reason});created.channels++;}catch{created.errors.push("channel:"+c.name);}}return{ok:true,created};}module.exports={buildRestorePlan,restoreMissing};
+const { getSnapshot } = require("./snapshot");
+async function restoreMissing(guild, reason="Multi Striker emergency recovery") {
+  const s=getSnapshot(guild.id); if(!s) return {ok:false,message:"No snapshot"};
+  const result={ok:true,created:{roles:0,channels:0},errors:[]};
+  const roleNames=new Set(guild.roles.cache.map(r=>r.name));
+  const channelNames=new Set(guild.channels.cache.map(c=>c.name));
+  for(const r of [...(s.roles||[])].sort((a,b)=>a.position-b.position)) {
+    if(roleNames.has(r.name)) continue;
+    try { await guild.roles.create({name:r.name,color:r.color,permissions:BigInt(r.permissions),hoist:r.hoist,mentionable:r.mentionable,reason}); result.created.roles++; }
+    catch(e){ result.errors.push({type:"role",name:r.name,message:e.message}); }
+  }
+  for(const c of (s.channels||[])) {
+    if(channelNames.has(c.name)) continue;
+    try { await guild.channels.create({name:c.name,type:c.type,topic:c.topic||undefined,nsfw:c.nsfw,rateLimitPerUser:c.rateLimitPerUser||0,reason}); result.created.channels++; }
+    catch(e){ result.errors.push({type:"channel",name:c.name,message:e.message}); }
+  }
+  return result;
+}
+function buildRestorePlan(guildId){const s=getSnapshot(guildId);return s?{takenAt:s.takenAt,roles:s.roles?.length||0,channels:s.channels?.length||0,mode:"SAFE_MISSING_ONLY"}:null;}
+module.exports={buildRestorePlan,restoreMissing};
