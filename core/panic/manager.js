@@ -15,5 +15,6 @@ async function triggerPanic(guild,reason,details={}){
  return state;
 }
 async function recover(guild,reason="Owner-approved recovery"){const result=await restoreMissing(guild,reason);const state=active.get(guild.id);if(state)state.recovery=result;return result;}
+async function finishRecovery(guild){await require("../lockdown/manager").unlock(guild);setState(guild.id,"SAFE_MODE","Recovery completed; owner review recommended");const s=active.get(guild.id);if(s)s.active=false;return s||null;}
 function getPanic(guildId){return active.get(guildId)||null;}function clearPanic(guildId){active.delete(guildId);return true;}
-module.exports={triggerPanic,recover,getPanic,clearPanic};
+module.exports={triggerPanic,recover,finishRecovery,getPanic,clearPanic};
