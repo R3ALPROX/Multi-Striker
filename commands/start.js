@@ -22,8 +22,7 @@ module.exports={
  data:new SlashCommandBuilder()
   .setName("start")
   .setDescription("Automatically set up Multi Striker protection")
-  .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-  .setDMPermission(false),
+  .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
  async execute(interaction){
   try{
    if(!interaction.guildId||!interaction.guild)return interaction.reply({content:"Multi Striker can only be started inside a server.",ephemeral:true});
