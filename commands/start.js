@@ -1,5 +1,5 @@
-const {SlashCommandBuilder,PermissionFlagsBits,ChannelType,EmbedBuilder,ButtonBuilder,ButtonStyle,ActionRowBuilder,MessageFlags}=require("discord.js");
-const {getGuildConfig,updateGuildConfig}=require("../config/manager");
+const {SlashCommandBuilder,PermissionFlagsBits,ChannelType,EmbedBuilder,ButtonBuilder,ButtonStyle,ActionRowBuilder}=require("discord.js");
+const {updateGuildConfig}=require("../config/manager");
 const {runSecurityAudit}=require("../core/security/audit");
 const {takeSnapshot}=require("../core/backups/snapshot");
 
@@ -25,13 +25,15 @@ module.exports={
   .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
   .setDMPermission(false),
  async execute(interaction){
-  if(!interaction.inGuild())return interaction.reply({content:"Multi Striker can only be started inside a server.",flags:MessageFlags.Ephemeral});
-  if(interaction.user.id!==interaction.guild.ownerId)return interaction.reply({content:"Only the server owner can start Multi Striker protection.",flags:MessageFlags.Ephemeral});
-  await interaction.deferReply({flags:MessageFlags.Ephemeral});
   try{
+   if(!interaction.guildId||!interaction.guild)return interaction.reply({content:"Multi Striker can only be started inside a server.",ephemeral:true});
+   if(interaction.user.id!==interaction.guild.ownerId)return interaction.reply({content:"Only the server owner can start Multi Striker protection.",ephemeral:true});
+   await interaction.deferReply({ephemeral:true});
+
    const guild=interaction.guild;
    const botMember=guild.members.me||await guild.members.fetch(interaction.client.user.id);
    if(!botMember)throw new Error("Could not resolve Multi Striker's guild member.");
+
    const required=[PermissionFlagsBits.ViewAuditLog,PermissionFlagsBits.ManageRoles,PermissionFlagsBits.ManageChannels,PermissionFlagsBits.ModerateMembers,PermissionFlagsBits.ManageWebhooks];
    const missing=required.filter(p=>!botMember.permissions.has(p));
    if(missing.length){
@@ -71,7 +73,8 @@ module.exports={
   }catch(error){
    console.error("/start setup failed:",error);
    const message=error?.message?String(error.message).slice(0,800):"Unknown error";
-   await interaction.editReply(`Multi Striker could not finish setup.\n\n**Error:** ${message}`).catch(()=>{});
+   if(interaction.deferred||interaction.replied)await interaction.editReply(`Multi Striker could not finish setup.\n\n**Error:** ${message}`).catch(()=>{});
+   else await interaction.reply({content:`Multi Striker could not start.\n\n**Error:** ${message}`,ephemeral:true}).catch(()=>{});
   }
  }
 };
