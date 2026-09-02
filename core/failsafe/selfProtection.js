@@ -1,0 +1,3 @@
+const {setState}=require("./state");
+async function notifyOwnerOfRemoval(guild,client,executorId){const state=setState(guild.id,"LOCKDOWN","Multi Striker was removed/targeted by an audit action");const invite=`https://discord.com/oauth2/authorize?client_id=${client.user.id}&scope=bot%20applications.commands&permissions=8`;try{const owner=await guild.fetchOwner();await owner.send(`🚨 Multi Striker self-protection alert\nServer: **${guild.name}**\nExecutor: <@${executorId||"0"}>\nThe bot cannot re-add itself after removal. Re-authorize it with this official Discord link:\n${invite}\nSecurity state: **${state.mode}**`);}catch{}return state;}
+module.exports={notifyOwnerOfRemoval};
