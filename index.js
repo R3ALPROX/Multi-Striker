@@ -3,7 +3,25 @@ const path=require("path");const {Client,Collection,GatewayIntentBits,Partials,R
 const {registerAntiNukeEvents}=require("./core/antinuke/events");const {registerAntiRaidEvents}=require("./core/antiraid/events");const {registerVerificationEvents}=require("./core/verification/events");const {inspectMessage}=require("./core/automod/messages");const {recordFailure}=require("./core/failsafe/failsafe");const {startBackupScheduler}=require("./core/backups/scheduler");const {inspectRolePermissionChange}=require("./core/antinuke/strictPermissions");const {startHealthMonitor}=require("./core/failsafe/health");
 const client=new Client({intents:[GatewayIntentBits.Guilds,GatewayIntentBits.GuildMembers,GatewayIntentBits.GuildModeration,GatewayIntentBits.GuildMessages,GatewayIntentBits.MessageContent],partials:[Partials.GuildMember,Partials.Channel,Partials.Message]});client.commands=new Collection();
 function loadCommands(){const command=require(path.join(__dirname,"commands","start.js"));client.commands.set(command.data.name,command);console.log("Loaded command: /start");return[command.data.toJSON()];}const commandPayload=loadCommands();
-async function registerCommands(){const rest=new REST({version:"10"}).setToken(process.env.DISCORD_TOKEN);const guildId=process.env.DEV_GUILD_ID;if(guildId){if(!/^\d{17,20}$/.test(guildId))throw new Error("DEV_GUILD_ID must be a valid Discord server ID.");await rest.put(Routes.applicationGuildCommands(process.env.CLIENT_ID,guildId),{body:commandPayload});console.log("Registered /start to DEV_GUILD_ID: "+guildId);return;}await rest.put(Routes.applicationCommands(process.env.CLIENT_ID),{body:commandPayload});console.log("Registered /start globally.");}
+async function registerCommands(){
+ const rest=new REST({version:"10"}).setToken(process.env.DISCORD_TOKEN);
+ const guildId=process.env.DEV_GUILD_ID;
+ if(guildId){
+  if(!/^\d{17,20}$/.test(guildId))throw new Error("DEV_GUILD_ID must be a valid Discord server ID.");
+  await rest.put(Routes.applicationGuildCommands(process.env.CLIENT_ID,guildId),{body:commandPayload});
+  console.log("Registered /start to DEV_GUILD_ID: "+guildId);
+  try{
+   const globalCommands=await rest.get(Routes.applicationCommands(process.env.CLIENT_ID));
+   for(const command of globalCommands){
+    await rest.delete(Routes.applicationCommand(process.env.CLIENT_ID,command.id));
+    console.log("Removed stale global command: "+command.name);
+   }
+  }catch(error){console.error("Could not remove stale global commands:",error.message);}
+  return;
+ }
+ await rest.put(Routes.applicationCommands(process.env.CLIENT_ID),{body:commandPayload});
+ console.log("Registered /start globally.");
+}
 client.once("clientReady",()=>{console.log("MULTI STRIKER IS ONLINE | "+client.user.tag+" | "+client.guilds.cache.size+" servers");});
 client.on("interactionCreate",async interaction=>{if(!interaction.isChatInputCommand())return;const command=client.commands.get(interaction.commandName);if(!command)return;try{await command.execute(interaction);}catch(error){console.error("Command error:",error);if(interaction.guildId)recordFailure(interaction.guildId,"command",error);const message=error?.message?String(error.message).slice(0,800):"Unknown error";const p={content:`Command failed.\n\n**Error:** ${message}`,ephemeral:true};if(interaction.replied||interaction.deferred)await interaction.followUp(p).catch(()=>{});else await interaction.reply(p).catch(()=>{});}});
 client.on("messageCreate",message=>inspectMessage(message).catch(error=>{if(message.guild)recordFailure(message.guild.id,"automod",error);}));
