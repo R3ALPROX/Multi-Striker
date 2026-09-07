@@ -1,4 +1,4 @@
-const {SlashCommandBuilder,PermissionFlagsBits,ChannelType,EmbedBuilder,ButtonBuilder,ButtonStyle,ActionRowBuilder}=require("discord.js");
+const {SlashCommandBuilder,PermissionFlagsBits,ChannelType,EmbedBuilder}=require("discord.js");
 const {updateGuildConfig}=require("../config/manager");
 const {runSecurityAudit}=require("../core/security/audit");
 const {takeSnapshot}=require("../core/backups/snapshot");
@@ -19,56 +19,46 @@ async function getOrCreateVerification(guild,botMember){
 }
 
 module.exports={
- data:new SlashCommandBuilder()
-  .setName("start")
-  .setDescription("Automatically set up Multi Striker protection")
-  .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+ data:new SlashCommandBuilder().setName("start").setDescription("Automatically set up Multi Striker protection").setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
  async execute(interaction){
   try{
    if(!interaction.guildId||!interaction.guild)return interaction.reply({content:"Multi Striker can only be started inside a server.",ephemeral:true});
    if(interaction.user.id!==interaction.guild.ownerId)return interaction.reply({content:"Only the server owner can start Multi Striker protection.",ephemeral:true});
    await interaction.deferReply({ephemeral:true});
-
    const guild=interaction.guild;
    const botMember=guild.members.me||await guild.members.fetch(interaction.client.user.id);
    if(!botMember)throw new Error("Could not resolve Multi Striker's guild member.");
 
+   // This hierarchy is mandatory for pre-action bot quarantine. Discord does not allow
+   // a bot to modify members whose highest role is equal to or above its own.
+   const highestManagedRole=guild.roles.cache.filter(r=>!r.managed&&r.id!==guild.id).sort((a,b)=>b.position-a.position).first();
+   if(highestManagedRole&&highestManagedRole.id!==botMember.roles.highest.id)throw new Error("Multi Striker must have the highest non-managed role in the server. Move its role to the top before running /start so newly added bots can be quarantined before verification.");
+
    const required=[PermissionFlagsBits.ViewAuditLog,PermissionFlagsBits.ManageRoles,PermissionFlagsBits.ManageChannels,PermissionFlagsBits.ModerateMembers,PermissionFlagsBits.ManageWebhooks];
    const missing=required.filter(p=>!botMember.permissions.has(p));
-   if(missing.length){
-    return interaction.editReply("Multi Striker is missing required permissions. Reinvite it with View Audit Log, Manage Roles, Manage Channels, Moderate Members and Manage Webhooks, then run /start again.");
-   }
+   if(missing.length)return interaction.editReply("Multi Striker is missing required permissions. Reinvite it with View Audit Log, Manage Roles, Manage Channels, Moderate Members and Manage Webhooks, then run /start again.");
 
    const logChannel=await getOrCreateSecurityChannel(guild);
    const verification=await getOrCreateVerification(guild,botMember);
-   updateGuildConfig(guild.id,{security:{enabled:true,alertChannelId:logChannel.id},antinuke:{enabled:true},antiraid:{enabled:true},joingate:{enabled:true},automod:{enabled:true},verification:{enabled:true,channelId:verification.channel.id,verifiedRoleId:verification.role.id},logs:{security:logChannel.id,raid:logChannel.id,verification:logChannel.id}});
+   updateGuildConfig(guild.id,{security:{enabled:true,alertChannelId:logChannel.id},antinuke:{enabled:true},antiraid:{enabled:true},joingate:{enabled:true,containDangerousBots:true},automod:{enabled:true},verification:{enabled:true,channelId:verification.channel.id,verifiedRoleId:verification.role.id},logs:{security:logChannel.id,raid:logChannel.id,verification:logChannel.id}});
 
    const snapshot=takeSnapshot(guild);
    let audit=null;
    try{audit=await runSecurityAudit(guild);}catch(error){console.error("Initial security audit error:",error);}
 
-   const panel=new EmbedBuilder()
-    .setTitle("🛡️ Multi Striker Verification")
-    .setDescription("Normal members are not quarantined. Members that the security engine considers suspicious can be directed here for verification.")
-    .setTimestamp();
-   const row=new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId("multi_striker_verify").setLabel("Verify me").setStyle(ButtonStyle.Success));
-   await verification.channel.send({embeds:[panel],components:[row]});
-
-   const embed=new EmbedBuilder()
-    .setTitle("🛡️ Multi Striker Protection Active")
-    .setDescription("Automatic security is configured.")
-    .addFields(
-     {name:"Anti-Nuke",value:"Active",inline:true},
-     {name:"Anti-Raid",value:"Active",inline:true},
-     {name:"Adaptive Anti-Spam",value:"Active",inline:true},
-     {name:"Security Logs",value:logChannel.toString(),inline:true},
-     {name:"Verification",value:verification.channel.toString(),inline:true},
-     {name:"Backup",value:`Snapshot **${snapshot.id}** created`,inline:true},
-     {name:"Automatic response",value:"Contextual containment, panic lockdown, coordinated-actor detection and safe recovery are enabled."}
-    ).setTimestamp();
+   const embed=new EmbedBuilder().setTitle("🛡️ Multi Striker Protection Active").setDescription("Automatic security is configured. Members are verified in the background; every bot is quarantined first and must pass provenance, permission, hierarchy and risk checks before release.").addFields(
+    {name:"Anti-Nuke",value:"Active",inline:true},
+    {name:"Anti-Raid",value:"Active",inline:true},
+    {name:"Adaptive Anti-Spam",value:"Active",inline:true},
+    {name:"Security Logs",value:logChannel.toString(),inline:true},
+    {name:"Verification",value:"Automatic",inline:true},
+    {name:"Bot Gate",value:"Quarantine → Source → Risk → Release",inline:true},
+    {name:"Backup",value:`Snapshot **${snapshot.id}** created`,inline:true},
+    {name:"Automatic response",value:"Contextual containment, panic lockdown, coordinated-actor detection, bot pre-action quarantine and safe recovery are enabled."}
+   ).setTimestamp();
    if(audit)embed.addFields({name:"Initial Security Scan",value:`Score: **${audit.score}/100** • ${audit.status}`});
    await logChannel.send({embeds:[embed]});
-   await interaction.editReply("Multi Striker is fully configured. 🛡️ #security-logs, adaptive protection, backups, raid detection and suspicious-user verification are active.");
+   await interaction.editReply("Multi Striker is fully configured. 🛡️ Every newly added bot is quarantined before complete verification and cannot be released until it passes the security gate.");
   }catch(error){
    console.error("/start setup failed:",error);
    const message=error?.message?String(error.message).slice(0,800):"Unknown error";
