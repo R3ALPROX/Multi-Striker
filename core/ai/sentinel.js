@@ -2,22 +2,34 @@
 const { analyze } = require("./brain");
 
 const ACTIONS = new Set(["MONITOR", "VERIFY", "ALERT", "CONTAIN"]);
+const PLAN_TO_ACTION = {
+  MONITOR: "MONITOR",
+  VERIFY: "VERIFY",
+  ALERT_OWNER: "ALERT",
+  CONTAIN_MEMBER: "CONTAIN",
+  PANIC_MODE: "CONTAIN"
+};
 
 function clamp(n) {
   return Math.max(0, Math.min(100, Number(n) || 0));
 }
 
+function normalizeAction(action) {
+  const key = String(action || "").toUpperCase();
+  return PLAN_TO_ACTION[key] || key;
+}
+
 function supervise(input = {}, proposal = {}) {
+  const originalAction = String(proposal.action || "").toUpperCase();
+  let action = normalizeAction(originalAction);
+  if (!ACTIONS.has(action)) action = "MONITOR";
+
   const local = analyze(input);
-  let action = ACTIONS.has(String(proposal.action || "").toUpperCase())
-    ? String(proposal.action).toUpperCase()
-    : "MONITOR";
   const reasons = [];
   const evidence = Number(input.evidenceCount || local.evidence) || 0;
   const proposedRisk = clamp(proposal.risk);
   const riskGap = Math.abs(proposedRisk - local.risk);
 
-  // The supervisor never accepts a cloud/AI result that materially contradicts local evidence.
   if (riskGap > 30) {
     action = local.action;
     reasons.push("AI risk disagrees with local evidence");
@@ -31,6 +43,11 @@ function supervise(input = {}, proposal = {}) {
   if (action === "CONTAIN" && local.risk < 85 && !input.policyContainmentRequired) {
     action = local.risk >= 60 ? "ALERT" : "VERIFY";
     reasons.push("local containment threshold not reached");
+  }
+
+  if (action === "CONTAIN" && originalAction === "PANIC_MODE" && local.risk < 90) {
+    action = "ALERT";
+    reasons.push("panic threshold not reached");
   }
 
   if (input.protectedTarget) {
@@ -53,8 +70,9 @@ function supervise(input = {}, proposal = {}) {
     localRisk: local.risk,
     confidence: local.confidence,
     action,
+    requestedAction: originalAction,
     reasons: [...new Set([...(proposal.reasons || []), ...local.reasons, ...reasons])],
-    approved: action === proposal.action,
+    approved: action === normalizeAction(originalAction),
     source: "multi-striker-sentinel"
   };
 }
@@ -62,10 +80,10 @@ function supervise(input = {}, proposal = {}) {
 function canExecute(input = {}, proposal = {}) {
   const checked = supervise(input, proposal);
   return {
-    allowed: checked.approved && checked.action === proposal.action,
+    allowed: checked.approved,
     checked,
     reason: checked.approved ? "policy-approved" : "supervisor-rejected"
   };
 }
 
-module.exports = { supervise, canExecute };
+module.exports = { supervise, canExecute, normalizeAction };
