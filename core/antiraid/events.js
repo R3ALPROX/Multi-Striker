@@ -3,20 +3,15 @@ const {update}=require("../security/adaptiveLevel");
 const {evaluateHeatPanic}=require("./heatPanic");
 const {inspectJoinGate}=require("../joingate/filter");
 const {containVector}=require("../antinuke/vectorContainment");
-const {quarantineMember}=require("../quarantine/manager");
 const {getGuildConfig}=require("../../config/manager");
 const {add}=require("../intelligence/memory");
 
 function registerAntiRaidEvents(client){
  client.on("guildMemberAdd",async member=>{try{
-  const cfg=getGuildConfig(member.guild.id);
+  // Bot joins are owned by the verification pipeline. It quarantines first,
+  // verifies completely, then releases with moderation permissions withheld.
+  if(member.user.bot)return;
   const gate=await inspectJoinGate(member);
-
-  if(member.user.bot&&cfg.joingate.containDangerousBots){
-   const quarantine=await quarantineMember(member.guild,member.id,"Multi Striker pre-verification bot quarantine").catch(e=>({ok:false,message:e.message}));
-   add(member.guild.id,{type:"bot_preverification",memberId:member.id,quarantined:!!quarantine.ok,time:Date.now()});
-  }
-
   const joinRisk=gate.flags?.length?20:0;
   add(member.guild.id,{type:"member_join",memberId:member.id,risk:joinRisk,flags:gate.flags||[],time:Date.now()});
   update(member.guild.id,joinRisk);
