@@ -1,4 +1,5 @@
 const { analyzeContext } = require("./analyzer");
+const { canExecute } = require("./sentinel");
 const { validateAIResult } = require("../failsafe/aiGuard");
 
 const ROLES = ["DECISION", "VERIFICATION", "ACTION"];
@@ -15,8 +16,7 @@ async function callProvider(provider, role, payload) {
   const { signal, clear } = timeoutSignal(provider.timeoutMs || 5000);
   try {
     const response = await fetch(provider.url, {
-      method: "POST",
-      signal,
+      method: "POST", signal,
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${provider.apiKey}` },
       body: JSON.stringify({ role, input: payload })
     });
@@ -30,19 +30,17 @@ async function callProvider(provider, role, payload) {
 
 async function firstHealthy(providers, role, payload) {
   for (const provider of providers || []) {
-    try { return await callProvider(provider, role, payload); }
-    catch (_) { /* fail over without exposing provider errors to the decision chain */ }
+    try { return await callProvider(provider, role, payload); } catch (_) {}
   }
   return null;
 }
 
-function agreement(decision, verification) {
-  if (!decision || !verification) return false;
-  if (decision.action !== verification.action) return false;
-  return Math.abs(Number(decision.risk) - Number(verification.risk)) <= 25;
+function agreement(a, b) {
+  if (!a || !b || a.action !== b.action) return false;
+  return Math.abs(Number(a.risk) - Number(b.risk)) <= 20;
 }
 
-async function runSecurityPipeline(input, config = {}) {
+async function runSecurityPipeline(input = {}, config = {}) {
   const local = analyzeContext(input);
   const providers = config.providers || {};
   const decision = await firstHealthy(providers.decision, "DECISION", { ...input, local });
@@ -53,11 +51,17 @@ async function runSecurityPipeline(input, config = {}) {
     return { status: "SAFE_MODE", decision, verification, verified: false, action: "MONITOR", reason: "Independent verification failed" };
   }
 
-  const action = await firstHealthy(providers.action, "ACTION", { input, decision, verification });
-  if (!action || !ALLOWED.has(action.action)) {
-    return { status: "SAFE_MODE", decision, verification, verified: false, action: "MONITOR", reason: "Action agent unavailable or invalid" };
+  const actionPlan = await firstHealthy(providers.action, "ACTION", { input, decision, verification, local });
+  if (!actionPlan || !ALLOWED.has(actionPlan.action)) {
+    return { status: "SAFE_MODE", decision, verification, verified: false, action: "MONITOR", reason: "Action planner unavailable or invalid" };
   }
-  return { status: "READY", decision, verification, action: action.action, verified: true };
+
+  const gate = canExecute({ ...input, evidenceCount: input.evidenceCount || local.features.evidenceCount }, actionPlan);
+  if (!gate.allowed) {
+    return { status: "SUPERVISOR_BLOCKED", decision, verification, actionPlan, supervisor: gate.checked, verified: false, action: "MONITOR", reason: gate.reason };
+  }
+
+  return { status: "READY", decision, verification, action: actionPlan.action, supervisor: gate.checked, verified: true };
 }
 
 module.exports = { ROLES, runSecurityPipeline };
