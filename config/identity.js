@@ -1,8 +1,6 @@
 /*
  * Multi Striker Identity Registry
- *
- * Single source of truth for the bot's public identity and every
- * user-facing feature name. Core modules should import getIdentity().
+ * Single source of truth for public identity and user-facing feature names.
  */
 const IDENTITY = {
   bot: {
@@ -18,6 +16,7 @@ const IDENTITY = {
     botGate: "Bot Gate",
     sourceVerification: "Bot Source Verification",
     contextualIntelligence: "Contextual Intelligence",
+    localSecurityBrain: "Local Security Brain",
     roleAnalysis: "Role Analysis",
     permissionAnalysis: "Permission Analysis",
     behaviorAnalysis: "Behavior Analysis",
@@ -32,18 +31,21 @@ const IDENTITY = {
     failSafe: "Fail-Safe",
     selfProtection: "Self-Protection",
     audit: "Security Audit",
-    aiDecision: "Decision AI",
-    aiVerification: "Verification AI",
-    aiAction: "Action AI",
-    aiSupervisor: "Local AI Supervisor",
+    aiDecision: "Decision Intelligence",
+    aiVerification: "Verification Intelligence",
+    aiAction: "Action Intelligence",
+    aiSupervisor: "Local Sentinel",
     aiFailover: "AI Failover",
-    aiPolicy: "AI Safety Policy"
+    aiPolicy: "AI Safety Policy",
+    aiExplainability: "AI Explainability",
+    aiAdaptiveBaseline: "Adaptive Baseline",
+    aiCorrelation: "Threat Correlation"
   },
   ai: {
     enabled: true,
-    architecture: "three-stage-plus-local-supervisor",
-    stages: ["DECISION", "VERIFY", "ACTION"],
-    supervisor: "LOCAL",
+    architecture: "local-security-brain-with-sentinel",
+    stages: ["OBSERVE", "LEARN", "ANALYZE", "DECIDE", "SUPERVISE"],
+    supervisor: "LOCAL_SENTINEL",
     externalProvidersOptional: true,
     failClosed: true
   }
