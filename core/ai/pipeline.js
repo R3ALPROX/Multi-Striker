@@ -13,7 +13,7 @@ function normalizeResult(value, fallback) {
   return { risk, action, reason: String(value.reason || "No reason supplied").slice(0, 500), source: value.source || "external-ai" };
 }
 
-function localDecision(input) {
+function localDecision(input = {}) {
   return analyzeContext(input);
 }
 
@@ -32,7 +32,7 @@ async function verificationStage(input, decision) {
   const fallback = {
     approved: decision.action === "CONTAIN" ? decision.risk >= 70 && localRisk >= 60 : decision.risk <= 100,
     risk: Math.max(decision.risk, localRisk),
-    reason: "Independent policy and evidence check"
+    reason: "Independent local policy and evidence check"
   };
 
   const result = await callProvider("VERIFY", {
@@ -50,8 +50,10 @@ async function verificationStage(input, decision) {
   };
 }
 
-function localActionPlan(decision, verification) {
+function localActionPlan(input, decision, verification) {
   if (!verification.approved) return { action: "ALERT_OWNER", reason: "Verification rejected automated containment" };
+  if (input.panicRecommended && verification.risk >= 80) return { action: "PANIC_MODE", reason: "Verified critical multi-vector activity" };
+  if (input.policyContainmentRequired && verification.risk >= 70) return { action: "CONTAIN_MEMBER", reason: "Verified threshold breach requires containment" };
   if (decision.action === "CONTAIN" && verification.risk >= 70) return { action: "CONTAIN_MEMBER", reason: "Verified high-risk security incident" };
   if (decision.action === "ALERT" || verification.risk >= 60) return { action: "ALERT_OWNER", reason: "Verified elevated-risk incident" };
   if (decision.action === "VERIFY") return { action: "VERIFY", reason: "Additional verification required" };
@@ -59,7 +61,7 @@ function localActionPlan(decision, verification) {
 }
 
 async function actionStage(input, decision, verification) {
-  const fallback = localActionPlan(decision, verification);
+  const fallback = localActionPlan(input, decision, verification);
   const result = await callProvider("ACTION", {
     role: "action",
     instruction: "Convert a verified security decision into the smallest safe allowlisted plan. Return JSON only: {action:MONITOR|VERIFY|ALERT_OWNER|CONTAIN_MEMBER|PANIC_MODE,reason:string}. Do not invent actions.",
@@ -71,8 +73,8 @@ async function actionStage(input, decision, verification) {
     return { ...fallback, source: "local-action-fallback" };
   }
   const proposed = { action: String(result.data.action).toUpperCase(), reason: String(result.data.reason || "External action plan").slice(0, 500) };
-  const local = localActionPlan(decision, verification);
-  // External AI can only choose an equal or less aggressive plan than local policy.
+  const local = localActionPlan(input, decision, verification);
+  // External AI can only choose an equal or less aggressive plan than deterministic policy.
   const rank = { MONITOR: 0, VERIFY: 1, ALERT_OWNER: 2, CONTAIN_MEMBER: 3, PANIC_MODE: 4 };
   if ((rank[proposed.action] ?? 99) > (rank[local.action] ?? 99)) return { ...local, source: "local-policy-cap" };
   return { ...proposed, source: result.provider || "external-ai" };
@@ -85,7 +87,7 @@ function supervisorCheck(input, decision, verification, plan) {
   if (!verification || typeof verification !== "object") problems.push("Missing verification result");
   if (!PLAN_ACTIONS.has(plan?.action)) problems.push("Unsupported action plan");
   if (plan?.action === "CONTAIN_MEMBER" && (!verification.approved || verification.risk < 70)) problems.push("Containment exceeds verified risk");
-  if (plan?.action === "PANIC_MODE" && verification.risk < 80) problems.push("Panic mode exceeds verified risk");
+  if (plan?.action === "PANIC_MODE" && (!verification.approved || verification.risk < 80)) problems.push("Panic mode exceeds verified risk");
   return { healthy: problems.length === 0, problems };
 }
 
