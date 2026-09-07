@@ -1,4 +1,4 @@
-const {applyVerifiedRole,verifyBot}=require("./service");
+const {applyVerifiedRole,verifyBot,handleBotPermissionInteraction}=require("./service");
 const {getGuildConfig}=require("../../config/manager");
 const {inspectMember}=require("../memberSecurity/detector");
 const {isRaidModeActive}=require("../antiraid/raidMode");
@@ -11,8 +11,9 @@ function registerVerificationEvents(client){
    if(!cfg.verification.enabled||!cfg.verification.verifiedRoleId)return;
 
    if(member.user.bot){
-    // Never grant a bot trust/verified access before containment + provenance checks.
-    await quarantineMember(member.guild,member.id,"Multi Striker bot pre-verification quarantine").catch(()=>{});
+    // Hard rule: quarantine BEFORE any trust, release, or permission decision.
+    const quarantined=await quarantineMember(member.guild,member.id,"Multi Striker bot pre-verification quarantine");
+    if(!quarantined.ok)return;
     await verifyBot(member.guild,member);
     return;
    }
@@ -24,6 +25,12 @@ function registerVerificationEvents(client){
    await applyVerifiedRole(member.guild,member);
    console.log(`Multi Striker automatically verified ${member.user.tag} in ${member.guild.name}`);
   }catch(error){console.error("Automatic verification error:",error);}
+ });
+
+ client.on("interactionCreate",async interaction=>{
+  try{
+   if(await handleBotPermissionInteraction(interaction))return;
+  }catch(error){console.error("Bot permission approval error:",error);}
  });
 }
 module.exports={registerVerificationEvents};
