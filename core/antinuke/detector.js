@@ -8,6 +8,8 @@ const { recent } = require("../intelligence/memory");
 const { recordAndAssess } = require("../intelligence/slowAttack");
 const { correlate } = require("../intelligence/correlation");
 const { containVector } = require("./vectorContainment");
+const { runSecurityPipeline } = require("../ai/pipeline");
+const aiSupervisor = require("../ai/supervisor");
 
 const ACTION_TO_THRESHOLD = {
     channelDelete: "channelDelete",
@@ -45,7 +47,6 @@ async function processSecurityAction(guild, executorId, actionType, targetId) {
     const windowMs = config.antinuke.windowSeconds * 1000;
     const key = `${guild.id}:${executorId}:${actionType}`;
     const count = tracker.add(key, windowMs);
-
     if (count < threshold) return;
 
     const triggerKey = `${guild.id}:${executorId}`;
@@ -54,16 +55,69 @@ async function processSecurityAction(guild, executorId, actionType, targetId) {
     if (now - (lastTriggered.get(triggerKey) || 0) < cooldownMs) return;
     lastTriggered.set(triggerKey, now);
 
-    const reason = `Multi Striker anti-nuke: ${count} ${actionType} actions within ${config.antinuke.windowSeconds}s`;
-    const result = await containMember(guild, executorId, reason);
-    const quarantine = await quarantineMember(guild, executorId, reason).catch(()=>({ok:false}));
-    const recentDestructive = recent(guild.id, config.antinuke.windowSeconds * 1000).filter(e => e.type === "bot_action" && e.executorId === executorId).length;
-    if (count >= Math.max(threshold * 2, config.antinuke.panicThreshold || 3) || recentDestructive >= 5 || slow.risk >= 80 || correlation.coordinated) {
-        await triggerPanic(guild, "Repeated destructive activity", { executorId, actionType, count });
-    }
-    await reportContainment(guild, executorId, actionType, count, { ...result, quarantine });
+    const panicRecommended =
+        count >= Math.max(threshold * 2, config.antinuke.panicThreshold || 3) ||
+        recent(guild.id, config.antinuke.windowSeconds * 1000).filter(e => e.type === "bot_action" && e.executorId === executorId).length >= 5 ||
+        slow.risk >= 80 || correlation.coordinated;
 
-    console.warn("ANTI-NUKE:", { guild: guild.id, executorId, actionType, targetId, count, result });
+    const reason = `Multi Striker anti-nuke: ${count} ${actionType} actions within ${config.antinuke.windowSeconds}s`;
+    const pipeline = await runSecurityPipeline({
+        guildId: guild.id,
+        executorId,
+        actionType,
+        targetId,
+        count,
+        threshold,
+        massActions: count >= threshold,
+        permissionEscalation: actionType === "dangerousPermission" || actionType === "permissionOverwrite",
+        targetedSecurityBot: false,
+        raidBurst: correlation.coordinated,
+        policyContainmentRequired: true,
+        panicRecommended
+    }).catch(error => ({
+        safe: false,
+        supervisor: { healthy: false, problems: [`AI pipeline failure: ${error.message}`] }
+    }));
+
+    const inspection = aiSupervisor.inspect(guild.id, pipeline);
+    await aiSupervisor.enforce(guild, inspection);
+    if (!inspection.healthy) {
+        console.warn("AI SUPERVISOR BLOCKED PIPELINE:", { guild: guild.id, executorId, actionType, reason: inspection.reason });
+        return;
+    }
+
+    const approval = aiSupervisor.approveAction(guild.id, pipeline.plan.action);
+    if (!approval.allowed) {
+        await aiSupervisor.enforce(guild, { healthy: false, blocked: true, reason: approval.reason });
+        return;
+    }
+
+    // The Action AI only produces an allowlisted plan. This deterministic gateway
+    // remains the only layer allowed to perform Discord mutations.
+    if (pipeline.plan.action === "MONITOR" || pipeline.plan.action === "VERIFY" || pipeline.plan.action === "ALERT_OWNER") {
+        console.warn("AI ACTION:", { guild: guild.id, executorId, actionType, plan: pipeline.plan });
+        return;
+    }
+
+    const result = await containMember(guild, executorId, reason);
+    const quarantine = await quarantineMember(guild, executorId, reason).catch(() => ({ ok: false }));
+
+    if (pipeline.plan.action === "PANIC_MODE") {
+        await triggerPanic(guild, "AI-verified repeated destructive activity", { executorId, actionType, count });
+    }
+
+    await reportContainment(guild, executorId, actionType, count, {
+        ...result,
+        quarantine,
+        ai: {
+            decision: pipeline.decision,
+            verification: pipeline.verification,
+            action: pipeline.plan,
+            supervisor: pipeline.supervisor
+        }
+    });
+
+    console.warn("ANTI-NUKE:", { guild: guild.id, executorId, actionType, targetId, count, result, ai: pipeline });
 }
 
 module.exports = { processSecurityAction };
