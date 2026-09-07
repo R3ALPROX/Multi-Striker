@@ -21,8 +21,7 @@ async function getBotProvenance(member){
   addedAt,
   applicationId:user.id,
   username:user.username,
-  globalName:user.globalName||null,
-  emailVerified:typeof user.flags?.has==="function"?true:null
+  globalName:user.globalName||null
  };
 }
 
