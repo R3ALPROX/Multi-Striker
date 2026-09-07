@@ -4,6 +4,7 @@ const { validateAIResult } = require("../failsafe/aiGuard");
 
 const SAFE_ACTIONS = new Set(["MONITOR", "VERIFY", "ALERT", "CONTAIN"]);
 const PLAN_ACTIONS = new Set(["MONITOR", "VERIFY", "ALERT_OWNER", "CONTAIN_MEMBER", "PANIC_MODE"]);
+const PLAN_RANK = { MONITOR: 0, VERIFY: 1, ALERT_OWNER: 2, CONTAIN_MEMBER: 3, PANIC_MODE: 4 };
 
 function normalizeResult(value, fallback) {
   if (!value || typeof value !== "object") return fallback;
@@ -13,9 +14,7 @@ function normalizeResult(value, fallback) {
   return { risk, action, reason: String(value.reason || "No reason supplied").slice(0, 500), source: value.source || "external-ai" };
 }
 
-function localDecision(input = {}) {
-  return analyzeContext(input);
-}
+function localDecision(input = {}) { return analyzeContext(input); }
 
 async function decisionStage(input) {
   const fallback = localDecision(input);
@@ -30,21 +29,25 @@ async function decisionStage(input) {
 async function verificationStage(input, decision) {
   const localRisk = localDecision(input).risk;
   const fallback = {
-    approved: decision.action === "CONTAIN" ? decision.risk >= 70 && localRisk >= 60 : decision.risk <= 100,
+    approved: input.policyContainmentRequired ? localRisk >= 70 : decision.action !== "CONTAIN" || (decision.risk >= 70 && localRisk >= 60),
     risk: Math.max(decision.risk, localRisk),
     reason: "Independent local policy and evidence check"
   };
 
   const result = await callProvider("VERIFY", {
     role: "verification",
-    instruction: "Independently verify the proposed security decision. Return JSON only: {approved:boolean,risk:0-100,reason:string}. Reject unsupported claims or excessive actions.",
+    instruction: "Independently verify the proposed security decision. Return JSON only: {approved:boolean,risk:0-100,reason:string}. Reject unsupported claims or excessive actions. Deterministic security policy remains authoritative.",
     incident: input,
     proposedDecision: decision
   });
   if (!result.ok || !result.data || typeof result.data !== "object") return { ...fallback, source: "local-verification-fallback" };
+
+  const externalRisk = Number(result.data.risk);
+  const risk = Number.isFinite(externalRisk) ? Math.max(0, Math.min(100, Math.max(localRisk, externalRisk))) : fallback.risk;
+  const approved = input.policyContainmentRequired ? localRisk >= 70 : result.data.approved === true && risk >= 0;
   return {
-    approved: result.data.approved === true && Number(result.data.risk) >= 0 && Number(result.data.risk) <= 100,
-    risk: Number.isFinite(Number(result.data.risk)) ? Number(result.data.risk) : fallback.risk,
+    approved,
+    risk,
     reason: String(result.data.reason || fallback.reason).slice(0, 500),
     source: result.provider || "external-ai"
   };
@@ -69,14 +72,17 @@ async function actionStage(input, decision, verification) {
     decision,
     verification
   });
-  if (!result.ok || !result.data || !PLAN_ACTIONS.has(String(result.data.action || "").toUpperCase())) {
-    return { ...fallback, source: "local-action-fallback" };
-  }
+  if (!result.ok || !result.data || !PLAN_ACTIONS.has(String(result.data.action || "").toUpperCase())) return { ...fallback, source: "local-action-fallback" };
+
   const proposed = { action: String(result.data.action).toUpperCase(), reason: String(result.data.reason || "External action plan").slice(0, 500) };
   const local = localActionPlan(input, decision, verification);
-  // External AI can only choose an equal or less aggressive plan than deterministic policy.
-  const rank = { MONITOR: 0, VERIFY: 1, ALERT_OWNER: 2, CONTAIN_MEMBER: 3, PANIC_MODE: 4 };
-  if ((rank[proposed.action] ?? 99) > (rank[local.action] ?? 99)) return { ...local, source: "local-policy-cap" };
+  const proposedRank = PLAN_RANK[proposed.action];
+  const localRank = PLAN_RANK[local.action];
+
+  // Hard policy events cannot be downgraded or upgraded by an external model.
+  if (input.policyContainmentRequired && proposed.action !== local.action) return { ...local, source: "local-policy-floor" };
+  // Outside hard policy events, external AI can never be more aggressive than local policy.
+  if (proposedRank > localRank) return { ...local, source: "local-policy-cap" };
   return { ...proposed, source: result.provider || "external-ai" };
 }
 
@@ -96,15 +102,13 @@ async function runSecurityPipeline(input) {
   const verification = await verificationStage(input, decision);
   const plan = await actionStage(input, decision, verification);
   const supervisor = supervisorCheck(input, decision, verification, plan);
-  if (!supervisor.healthy) {
-    return {
-      safe: false,
-      decision,
-      verification,
-      plan: { action: "ALERT_OWNER", reason: "Local supervisor blocked an unsafe AI result" },
-      supervisor
-    };
-  }
+  if (!supervisor.healthy) return {
+    safe: false,
+    decision,
+    verification,
+    plan: { action: "ALERT_OWNER", reason: "Local supervisor blocked an unsafe AI result" },
+    supervisor
+  };
   return { safe: true, decision, verification, plan, supervisor };
 }
 
