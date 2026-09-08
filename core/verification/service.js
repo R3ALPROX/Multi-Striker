@@ -21,6 +21,17 @@ async function applyVerifiedRole(guild,member,reason="Multi Striker automatic ve
  return{ok:true,roleId:verifiedRole.id};
 }
 
+async function containDestructiveBot(guild,member,result,reason){
+ const administrator=result.dangerousPermissions?.includes("Administrator");
+ const destructive=administrator||result.risk>=60;
+ if(!destructive)return{attempted:false,stopped:false};
+ // A quarantine role cannot override Administrator permissions. If a destructive bot
+ // remains capable of acting, remove it from the server when Discord hierarchy allows it.
+ if(!member.kickable)return{attempted:false,stopped:false,reason:"Bot is not kickable; its role is at or above Multi Striker."};
+ const kicked=await member.kick(reason).then(()=>true).catch(()=>false);
+ return{attempted:true,stopped:kicked,reason:kicked?"Destructive bot removed from server":"Discord rejected the kick"};
+}
+
 async function verifyBot(guild,member){
  if(!isQuarantined(guild.id,member.id))return{ok:false,held:true,reason:"Bot was not quarantined before verification."};
  const result=await inspectBot(member);
@@ -28,34 +39,46 @@ async function verifyBot(guild,member){
  const cfg=getGuildConfig(guild.id);
  const trusted=cfg.security?.trustedBotIds?.includes(member.id);
  const selfBot=member.id===guild.members.me?.id;
+
+ // Multi Striker itself is the only bot allowed to auto-release. Other bots always
+ // remain quarantined until the server owner explicitly approves them.
+ if(!selfBot){
+  const containment=await containDestructiveBot(guild,member,result,"Multi Striker detected a destructive bot during pre-action verification");
+  await sendLog(guild,"verification",securityEmbed(containment.stopped?"DESTRUCTIVE BOT REMOVED":"BOT HELD IN QUARANTINE",`<@${member.id}> was evaluated before any release.`,[
+   {name:"Risk",value:String(result.risk),inline:true},
+   {name:"Dangerous permissions",value:String(result.dangerousPermissions?.length||0),inline:true},
+   {name:"Containment",value:containment.stopped?"Kicked":"Quarantine retained",inline:true},
+   {name:"Hierarchy",value:guild.members.me?`Target ${member.roles.highest.position} / Multi Striker ${guild.members.me.roles.highest.position}`:"Multi Striker member unavailable",inline:true},
+   {name:"Reason",value:(containment.reason||result.reasons||["Owner approval required"]).toString().slice(0,1000)}
+  ])).catch(()=>{});
+  if(containment.stopped)return{ok:false,held:false,removed:true,result};
+ }
+
  const sourcePass=selfBot||!!source?.verifiedBot||!!trusted;
  const permissionPass=selfBot||(!result.dangerousPermissions?.includes("Administrator")&&result.dangerousPermissions?.length<=3);
- // Discord hierarchy is strict: another bot must be BELOW Multi Striker, not equal to it.
- // Multi Striker itself is the one intentional exception because it is comparing against itself.
  const me=guild.members.me;
  const rolePass=selfBot||!!me?.roles?.highest&&member.roles.highest.position<me.roles.highest.position;
  const raidPass=!isRaidModeActive(guild.id);
  const riskPass=selfBot||result.risk<35;
  const passed=sourcePass&&permissionPass&&rolePass&&raidPass&&riskPass;
  if(!passed){
-  await sendLog(guild,"verification",securityEmbed("BOT HELD IN QUARANTINE",`<@${member.id}> failed complete pre-action verification.`,[
+  const containment=await containDestructiveBot(guild,member,result,"Multi Striker destructive-bot containment after failed verification");
+  await sendLog(guild,"verification",securityEmbed(containment.stopped?"DESTRUCTIVE BOT REMOVED":"BOT HELD IN QUARANTINE",`<@${member.id}> failed complete pre-action verification.`,[
    {name:"Multi Striker self identity",value:selfBot?"Yes":"No",inline:true},
    {name:"Discord verified",value:source?.verifiedBot?"Yes":"No",inline:true},
    {name:"Risk",value:String(result.risk),inline:true},
    {name:"Dangerous permissions",value:String(result.dangerousPermissions?.length||0),inline:true},
    {name:"Hierarchy",value:me?`Target ${member.roles.highest.position} / Multi Striker ${me.roles.highest.position}`:"Multi Striker member unavailable",inline:true},
+   {name:"Containment",value:containment.stopped?"Kicked":(containment.reason||"Quarantine retained"),inline:true},
    {name:"Source",value:source?.addedBy?`Added by <@${source.addedBy}>`:"Installer unknown",inline:true},
    {name:"Reasons",value:(result.source?.reasons||result.reasons||["Verification failed"]).slice(0,5).join("; ").slice(0,1000)}
   ])).catch(()=>{});
-  return{ok:false,held:true,result};
+  return{ok:false,held:!containment.stopped,result,containment};
  }
 
- // Only Multi Striker itself can receive automatic restricted release.
- // Every other bot remains quarantined until the server owner explicitly approves it.
- const released=await releaseMemberRestricted(guild,member.id,"Multi Striker complete bot verification passed");
+ const released=await releaseMemberRestricted(guild,member.id,"Multi Striker self verification restricted release");
  if(!released.ok)return{ok:false,held:true,reason:released.reason,result};
  await applyVerifiedRole(guild,member,"Multi Striker verified bot").catch(()=>{});
-
  if(released.withheld?.length){
   pendingPermissionRequests.set(guild.id+":"+member.id,{guildId:guild.id,memberId:member.id,roleIds:released.withheld,createdAt:Date.now()});
   const row=new ActionRowBuilder().addComponents(
@@ -64,13 +87,13 @@ async function verifyBot(guild,member){
   );
   await sendLog(guild,"verification",{embeds:[securityEmbed("BOT VERIFIED — OWNER PERMISSION REQUIRED",`<@${member.id}> passed verification and was released with basic roles only. Privileged roles remain withheld until the server owner explicitly approves them.`,[
    {name:"Risk",value:String(result.risk),inline:true},
-   {name:"Source",value:selfBot?"Multi Striker self identity":(source?.verifiedBot?"Discord Verified Bot":"Trusted bot allowlist"),inline:true},
+   {name:"Source",value:"Multi Striker self identity",inline:true},
    {name:"Withheld roles",value:String(released.withheld.length),inline:true}
   ])],components:[row]}).catch(()=>{});
  }else{
   await sendLog(guild,"verification",securityEmbed("BOT VERIFIED AND RESTRICTED RELEASE",`<@${member.id}> passed complete verification and was released with no moderation-capable roles restored.`,[
    {name:"Risk",value:String(result.risk),inline:true},
-   {name:"Source",value:selfBot?"Multi Striker self identity":(source?.verifiedBot?"Discord Verified Bot":"Trusted bot allowlist"),inline:true}
+   {name:"Source",value:"Multi Striker self identity",inline:true}
   ])).catch(()=>{});
  }
  return{ok:true,result,withheld:released.withheld||[]};
@@ -87,9 +110,9 @@ async function handleBotPermissionInteraction(interaction){
  const request=pendingPermissionRequests.get(key);
  if(!request){await interaction.reply({content:"This permission request has expired or was already handled.",ephemeral:true}).catch(()=>{});return true;}
  const member=await interaction.guild.members.fetch(memberId).catch(()=>null);
- if(!member){pendingPermissionRequests.delete(key);await interaction.reply({content:"The bot is no longer in this server.",ephemeral:true}).catch(()=>{});return true;}
+ if(!member){pendingPermissionRequests.delete(key);await interaction.reply({content:"The bot is no longer in the server.",ephemeral:true}).catch(()=>{});return true;}
  if(action==="allow"){
-  const released=await releaseMember(interaction.guild,member.id,"Server owner approved full quarantine release");
+  const released=await releaseMember(interaction.guild,member.id,"Server owner approved full quarantine release",interaction.user.id);
   if(!released.ok){await interaction.reply({content:`Full release failed: ${released.reason}`,ephemeral:true}).catch(()=>{});return true;}
   pendingPermissionRequests.delete(key);
   await interaction.update({content:`Owner approved full release for <@${member.id}>. Restored ${released.restored} previously backed-up role(s).`,embeds:[],components:[]}).catch(()=>{});
