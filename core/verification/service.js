@@ -27,24 +27,31 @@ async function verifyBot(guild,member){
  const source=result.source?.provenance;
  const cfg=getGuildConfig(guild.id);
  const trusted=cfg.security?.trustedBotIds?.includes(member.id);
- const sourcePass=!!source?.verifiedBot||!!trusted;
- const permissionPass=!result.dangerousPermissions?.includes("Administrator")&&result.dangerousPermissions?.length<=3;
- const rolePass=member.roles.highest?.position<=(guild.members.me?.roles.highest?.position||0);
+ const selfBot=member.id===guild.members.me?.id;
+ const sourcePass=selfBot||!!source?.verifiedBot||!!trusted;
+ const permissionPass=selfBot||(!result.dangerousPermissions?.includes("Administrator")&&result.dangerousPermissions?.length<=3);
+ // Discord hierarchy is strict: another bot must be BELOW Multi Striker, not equal to it.
+ // Multi Striker itself is the one intentional exception because it is comparing against itself.
+ const me=guild.members.me;
+ const rolePass=selfBot||!!me?.roles?.highest&&member.roles.highest.position<me.roles.highest.position;
  const raidPass=!isRaidModeActive(guild.id);
- const riskPass=result.risk<35;
+ const riskPass=selfBot||result.risk<35;
  const passed=sourcePass&&permissionPass&&rolePass&&raidPass&&riskPass;
  if(!passed){
   await sendLog(guild,"verification",securityEmbed("BOT HELD IN QUARANTINE",`<@${member.id}> failed complete pre-action verification.`,[
+   {name:"Multi Striker self identity",value:selfBot?"Yes":"No",inline:true},
    {name:"Discord verified",value:source?.verifiedBot?"Yes":"No",inline:true},
    {name:"Risk",value:String(result.risk),inline:true},
    {name:"Dangerous permissions",value:String(result.dangerousPermissions?.length||0),inline:true},
+   {name:"Hierarchy",value:me?`Target ${member.roles.highest.position} / Multi Striker ${me.roles.highest.position}`:"Multi Striker member unavailable",inline:true},
    {name:"Source",value:source?.addedBy?`Added by <@${source.addedBy}>`:"Installer unknown",inline:true},
    {name:"Reasons",value:(result.source?.reasons||result.reasons||["Verification failed"]).slice(0,5).join("; ").slice(0,1000)}
   ])).catch(()=>{});
   return{ok:false,held:true,result};
  }
 
- // Automatic verification may grant a restricted release only. Privileged roles stay withheld.
+ // Only Multi Striker itself can receive automatic restricted release.
+ // Every other bot remains quarantined until the server owner explicitly approves it.
  const released=await releaseMemberRestricted(guild,member.id,"Multi Striker complete bot verification passed");
  if(!released.ok)return{ok:false,held:true,reason:released.reason,result};
  await applyVerifiedRole(guild,member,"Multi Striker verified bot").catch(()=>{});
@@ -57,13 +64,13 @@ async function verifyBot(guild,member){
   );
   await sendLog(guild,"verification",{embeds:[securityEmbed("BOT VERIFIED — OWNER PERMISSION REQUIRED",`<@${member.id}> passed verification and was released with basic roles only. Privileged roles remain withheld until the server owner explicitly approves them.`,[
    {name:"Risk",value:String(result.risk),inline:true},
-   {name:"Source",value:source?.verifiedBot?"Discord Verified Bot":"Trusted bot allowlist",inline:true},
+   {name:"Source",value:selfBot?"Multi Striker self identity":(source?.verifiedBot?"Discord Verified Bot":"Trusted bot allowlist"),inline:true},
    {name:"Withheld roles",value:String(released.withheld.length),inline:true}
   ])],components:[row]}).catch(()=>{});
  }else{
   await sendLog(guild,"verification",securityEmbed("BOT VERIFIED AND RESTRICTED RELEASE",`<@${member.id}> passed complete verification and was released with no moderation-capable roles restored.`,[
    {name:"Risk",value:String(result.risk),inline:true},
-   {name:"Source",value:source?.verifiedBot?"Discord Verified Bot":"Trusted bot allowlist",inline:true}
+   {name:"Source",value:selfBot?"Multi Striker self identity":(source?.verifiedBot?"Discord Verified Bot":"Trusted bot allowlist"),inline:true}
   ])).catch(()=>{});
  }
  return{ok:true,result,withheld:released.withheld||[]};
@@ -82,7 +89,7 @@ async function handleBotPermissionInteraction(interaction){
  const member=await interaction.guild.members.fetch(memberId).catch(()=>null);
  if(!member){pendingPermissionRequests.delete(key);await interaction.reply({content:"The bot is no longer in this server.",ephemeral:true}).catch(()=>{});return true;}
  if(action==="allow"){
-  const released=await releaseMember(interaction.guild,member.id,"Server owner approved full quarantine release",interaction.user.id);
+  const released=await releaseMember(interaction.guild,member.id,"Server owner approved full quarantine release");
   if(!released.ok){await interaction.reply({content:`Full release failed: ${released.reason}`,ephemeral:true}).catch(()=>{});return true;}
   pendingPermissionRequests.delete(key);
   await interaction.update({content:`Owner approved full release for <@${member.id}>. Restored ${released.restored} previously backed-up role(s).`,embeds:[],components:[]}).catch(()=>{});
