@@ -30,6 +30,7 @@ function create(guild, member, reason) {
   load();
   const record = {
     schemaVersion: 1,
+    state: "pending",
     guildId: String(guild.id),
     guildName: guild.name ?? null,
     memberId: String(member.id),
@@ -40,6 +41,27 @@ function create(guild, member, reason) {
       .map(role => ({ id: role.id, name: role.name, position: role.position, managed: role.managed }))
   };
   backups.set(key(guild.id, member.id), record);
+  persist();
+  return record;
+}
+
+function markQuarantined(guildId, memberId, quarantineRoleId) {
+  load();
+  const record = backups.get(key(guildId, memberId));
+  if (!record) return null;
+  record.state = "quarantined";
+  record.quarantineRoleId = String(quarantineRoleId);
+  record.quarantinedAt = Date.now();
+  persist();
+  return record;
+}
+
+function markRestricted(guildId, memberId) {
+  load();
+  const record = backups.get(key(guildId, memberId));
+  if (!record) return null;
+  record.state = "restricted";
+  record.restrictedAt = Date.now();
   persist();
   return record;
 }
@@ -55,4 +77,4 @@ function remove(guildId, memberId) {
   persist();
 }
 
-module.exports = { DATA_FILE, create, get, remove };
+module.exports = { DATA_FILE, create, markQuarantined, markRestricted, get, remove };
