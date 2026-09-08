@@ -1,6 +1,44 @@
 const { PermissionFlagsBits } = require("discord.js");
 const { securityEmbed, sendLog } = require("../security/logger");
 
+const ownerAlertCooldown = new Map();
+
+async function notifyOwnerOfDestruction(guild, executorId, eventName, count, details = {}) {
+    const key = guild.id;
+    const now = Date.now();
+    // Avoid DM-spamming the owner during a sustained attack while still allowing
+    // a fresh alert after the incident has been active for a while.
+    if (now - (ownerAlertCooldown.get(key) || 0) < 30000) return { ok: false, rateLimited: true };
+    ownerAlertCooldown.set(key, now);
+
+    const owner = await guild.fetchOwner().catch(() => null);
+    if (!owner?.user) return { ok: false, message: "Server owner could not be fetched." };
+
+    const severity = String(details.severity || "CRITICAL").toUpperCase();
+    const containment = String(details.containment || "Automatic containment is being attempted.");
+    const quarantine = details.quarantine ? `\nQuarantine: ${details.quarantine}` : "";
+    const trusted = details.trustedActor ? "\nImportant: this actor was previously trusted/verified, but destructive behavior overrides trust." : "";
+
+    const message = [
+        `🚨 **MULTI STRIKER SECURITY ALERT — ${severity}**`,
+        `Your server **${guild.name}** is under a destructive-action attack.`,
+        `Attacking actor: <@${executorId}>`,
+        `Detected action: **${eventName}**`,
+        `Detected count: **${count}**`,
+        `Containment: **${containment}**${quarantine}${trusted}`,
+        "",
+        "Multi Striker is monitoring the attack and attempting automatic containment. Check the server security logs immediately."
+    ].join("\n");
+
+    try {
+        await owner.user.send(message);
+        return { ok: true };
+    } catch (error) {
+        console.warn("Could not DM server owner security alert:", { guildId: guild.id, ownerId: owner.id, error: error.message });
+        return { ok: false, message: "Owner DM failed (DMs may be disabled)." };
+    }
+}
+
 async function containMember(guild, userId, reason) {
     const member = await guild.members.fetch(userId).catch(() => null);
     if (!member) return { ok: false, message: "Member could not be fetched." };
@@ -30,10 +68,7 @@ async function containMember(guild, userId, reason) {
         const removable = member.roles.cache.filter(role =>
             role.id !== guild.id &&
             !role.managed &&
-            role.editable &&
-            !role.permissions.has(PermissionFlagsBits.Administrator)
-                ? true
-                : role.id !== guild.id && !role.managed && role.editable
+            role.editable
         );
 
         if (removable.size) await member.roles.remove(removable, reason);
@@ -61,4 +96,4 @@ async function reportContainment(guild, executorId, eventName, count, result) {
     ));
 }
 
-module.exports = { containMember, reportContainment };
+module.exports = { containMember, reportContainment, notifyOwnerOfDestruction };
