@@ -1,7 +1,7 @@
 const { getGuildConfig } = require("../../config/manager");
 const tracker = require("./tracker");
 const { isTrusted } = require("../security/trust");
-const { containMember, reportContainment } = require("./actions");
+const { containMember, reportContainment, notifyOwnerOfDestruction } = require("./actions");
 const { quarantineMember } = require("../quarantine/manager");
 const { triggerPanic } = require("../panic/manager");
 const { recent } = require("../intelligence/memory");
@@ -30,7 +30,12 @@ const lastTriggered = new Map();
 async function processSecurityAction(guild, executorId, actionType, targetId) {
     const config = getGuildConfig(guild.id);
     if (!config.security.enabled || !config.antinuke.enabled) return;
-    if (!executorId || await isTrusted(guild, executorId)) return;
+    if (!executorId) return;
+
+    // Trust is only a baseline signal. It must NEVER create an immunity bypass
+    // for destructive behavior. A previously verified/trusted bot is monitored
+    // exactly like any other actor once it starts destructive activity.
+    const trustedActor = await isTrusted(guild, executorId);
 
     const slow = await recordAndAssess(guild.id, { executorId, actionType, targetId });
     const correlation = correlate(guild.id);
@@ -39,6 +44,10 @@ async function processSecurityAction(guild, executorId, actionType, targetId) {
     const threshold = config.antinuke.thresholds[thresholdKey];
     if (!threshold) {
         if (slow.risk >= 70 || correlation.coordinated) {
+            await notifyOwnerOfDestruction(guild, executorId, actionType, 1, {
+                severity: "HIGH",
+                containment: "Cross-vector containment requested"
+            });
             await containVector(guild, executorId, "Cross-vector attack correlation", { critical: slow.risk >= 80 || correlation.coordinated, actionType });
         }
         return;
@@ -73,7 +82,8 @@ async function processSecurityAction(guild, executorId, actionType, targetId) {
         targetedSecurityBot: false,
         raidBurst: correlation.coordinated,
         policyContainmentRequired: true,
-        panicRecommended
+        panicRecommended,
+        trustedActor
     }).catch(error => ({
         safe: false,
         supervisor: { healthy: false, problems: [`AI pipeline failure: ${error.message}`] }
@@ -83,24 +93,38 @@ async function processSecurityAction(guild, executorId, actionType, targetId) {
     await aiSupervisor.enforce(guild, inspection);
     if (!inspection.healthy) {
         console.warn("AI SUPERVISOR BLOCKED PIPELINE:", { guild: guild.id, executorId, actionType, reason: inspection.reason });
+        await notifyOwnerOfDestruction(guild, executorId, actionType, count, {
+            severity: "CRITICAL",
+            containment: "AI supervisor blocked automatic containment"
+        });
         return;
     }
 
     const approval = aiSupervisor.approveAction(guild.id, pipeline.plan.action);
     if (!approval.allowed) {
         await aiSupervisor.enforce(guild, { healthy: false, blocked: true, reason: approval.reason });
+        await notifyOwnerOfDestruction(guild, executorId, actionType, count, {
+            severity: "CRITICAL",
+            containment: "Automatic containment blocked by safety policy"
+        });
+        return;
+    }
+
+    if (pipeline.plan.action === "MONITOR" || pipeline.plan.action === "VERIFY" || pipeline.plan.action === "ALERT_OWNER") {
+        console.warn("AI ACTION:", { guild: guild.id, executorId, actionType, plan: pipeline.plan });
+        if (pipeline.plan.action === "ALERT_OWNER") {
+            await notifyOwnerOfDestruction(guild, executorId, actionType, count, {
+                severity: "HIGH",
+                containment: "Owner alert requested by security AI"
+            });
+        }
         return;
     }
 
     // The Action AI only produces an allowlisted plan. This deterministic gateway
     // remains the only layer allowed to perform Discord mutations.
-    if (pipeline.plan.action === "MONITOR" || pipeline.plan.action === "VERIFY" || pipeline.plan.action === "ALERT_OWNER") {
-        console.warn("AI ACTION:", { guild: guild.id, executorId, actionType, plan: pipeline.plan });
-        return;
-    }
-
     const result = await containMember(guild, executorId, reason);
-    const quarantine = await quarantineMember(guild, executorId, reason).catch(() => ({ ok: false }));
+    const quarantine = await quarantineMember(guild, executorId, reason).catch(() => ({ ok: false, reason: "Quarantine operation failed" }));
 
     if (pipeline.plan.action === "PANIC_MODE") {
         await triggerPanic(guild, "AI-verified repeated destructive activity", { executorId, actionType, count });
@@ -117,7 +141,14 @@ async function processSecurityAction(guild, executorId, actionType, targetId) {
         }
     });
 
-    console.warn("ANTI-NUKE:", { guild: guild.id, executorId, actionType, targetId, count, result, ai: pipeline });
+    await notifyOwnerOfDestruction(guild, executorId, actionType, count, {
+        severity: "CRITICAL",
+        containment: result.ok ? result.action : `Containment failed: ${result.message}`,
+        quarantine: quarantine.ok ? "Quarantine confirmed" : `Quarantine failed: ${quarantine.reason || "unknown reason"}`,
+        trustedActor
+    });
+
+    console.warn("ANTI-NUKE:", { guild: guild.id, executorId, actionType, targetId, count, result, quarantine, ai: pipeline });
 }
 
 module.exports = { processSecurityAction };
