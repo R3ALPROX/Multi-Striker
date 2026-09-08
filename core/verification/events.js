@@ -12,12 +12,22 @@ function registerVerificationEvents(client){
    if(!cfg.verification.enabled||!cfg.verification.verifiedRoleId)return;
 
    if(member.user.bot){
-    // Hard rule: quarantine BEFORE any trust, release, or permission decision.
+    // Hard rule: quarantine BEFORE trust or release. If Discord hierarchy prevents
+    // quarantine, perform a read-only risk inspection and attempt emergency removal
+    // only when the bot is clearly destructive and kickable.
     const quarantined=await quarantineMember(member.guild,member.id,"Multi Striker bot pre-verification quarantine");
     if(!quarantined.ok){
-     await sendLog(member.guild,"verification",securityEmbed("BOT QUARANTINE INCOMPLETE",`<@${member.id}> could not be placed into a confirmed quarantine state. No automatic verification or release was attempted.`,[
+     const {inspectBot}=require("../botSecurity/detector");
+     const result=await inspectBot(member).catch(()=>null);
+     const destructive=!!result&&(result.dangerousPermissions?.includes("Administrator")||result.risk>=60);
+     let kicked=false;
+     if(destructive&&member.kickable)kicked=await member.kick("Multi Striker emergency containment: destructive bot could not be quarantined").then(()=>true).catch(()=>false);
+     await sendLog(member.guild,"verification",securityEmbed(kicked?"DESTRUCTIVE BOT REMOVED":"BOT QUARANTINE INCOMPLETE",`<@${member.id}> could not be placed into a confirmed quarantine state.`,[
       {name:"Reason",value:String(quarantined.reason||"Unknown failure").slice(0,1000)},
-      {name:"Roles removed",value:String(quarantined.removed||0),inline:true},
+      {name:"Risk",value:result?String(result.risk):"Unavailable",inline:true},
+      {name:"Dangerous permissions",value:result?String(result.dangerousPermissions?.length||0):"Unavailable",inline:true},
+      {name:"Emergency containment",value:kicked?"Kicked":"Not possible / not required",inline:true},
+      {name:"Hierarchy",value:member.guild.members.me?`Target ${member.roles.highest.position} / Multi Striker ${member.guild.members.me.roles.highest.position}`:"Multi Striker member unavailable",inline:true},
       {name:"Backup created",value:quarantined.backupCreated?"Yes":"No",inline:true}
      ])).catch(()=>{});
      return;
