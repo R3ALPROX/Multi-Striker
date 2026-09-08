@@ -22,7 +22,6 @@ async function applyVerifiedRole(guild,member,reason="Multi Striker automatic ve
 }
 
 async function verifyBot(guild,member){
- // The bot must already be quarantined. Verification never happens first.
  if(!isQuarantined(guild.id,member.id))return{ok:false,held:true,reason:"Bot was not quarantined before verification."};
  const result=await inspectBot(member);
  const source=result.source?.provenance;
@@ -45,7 +44,7 @@ async function verifyBot(guild,member){
   return{ok:false,held:true,result};
  }
 
- // Release only after verification, but NEVER restore moderation-capable roles automatically.
+ // Automatic verification may grant a restricted release only. Privileged roles stay withheld.
  const released=await releaseMemberRestricted(guild,member.id,"Multi Striker complete bot verification passed");
  if(!released.ok)return{ok:false,held:true,reason:released.reason,result};
  await applyVerifiedRole(guild,member,"Multi Striker verified bot").catch(()=>{});
@@ -56,13 +55,13 @@ async function verifyBot(guild,member){
    new ButtonBuilder().setCustomId(`ms_botperm_allow:${member.id}`).setLabel("Allow moderation permissions").setStyle(ButtonStyle.Danger),
    new ButtonBuilder().setCustomId(`ms_botperm_deny:${member.id}`).setLabel("Keep restricted").setStyle(ButtonStyle.Secondary)
   );
-  await sendLog(guild,"verification",{embeds:[securityEmbed("BOT VERIFIED — OWNER PERMISSION REQUIRED",`<@${member.id}> passed verification and was released **without its moderation roles**. The server owner must explicitly approve restoration of those roles.`,[
+  await sendLog(guild,"verification",{embeds:[securityEmbed("BOT VERIFIED — OWNER PERMISSION REQUIRED",`<@${member.id}> passed verification and was released with basic roles only. Privileged roles remain withheld until the server owner explicitly approves them.`,[
    {name:"Risk",value:String(result.risk),inline:true},
    {name:"Source",value:source?.verifiedBot?"Discord Verified Bot":"Trusted bot allowlist",inline:true},
    {name:"Withheld roles",value:String(released.withheld.length),inline:true}
   ])],components:[row]}).catch(()=>{});
  }else{
-  await sendLog(guild,"verification",securityEmbed("BOT VERIFIED AND RELEASED",`<@${member.id}> passed complete verification and was released with no moderation-capable roles restored.`,[
+  await sendLog(guild,"verification",securityEmbed("BOT VERIFIED AND RESTRICTED RELEASE",`<@${member.id}> passed complete verification and was released with no moderation-capable roles restored.`,[
    {name:"Risk",value:String(result.risk),inline:true},
    {name:"Source",value:source?.verifiedBot?"Discord Verified Bot":"Trusted bot allowlist",inline:true}
   ])).catch(()=>{});
@@ -83,15 +82,15 @@ async function handleBotPermissionInteraction(interaction){
  const member=await interaction.guild.members.fetch(memberId).catch(()=>null);
  if(!member){pendingPermissionRequests.delete(key);await interaction.reply({content:"The bot is no longer in this server.",ephemeral:true}).catch(()=>{});return true;}
  if(action==="allow"){
-  const roles=request.roleIds.map(id=>interaction.guild.roles.cache.get(id)).filter(role=>role?.editable);
-  for(const role of roles)await member.roles.add(role,"Server owner approved Multi Striker bot moderation permissions").catch(()=>{});
+  const released=await releaseMember(interaction.guild,member.id,"Server owner approved full quarantine release",interaction.user.id);
+  if(!released.ok){await interaction.reply({content:`Full release failed: ${released.reason}`,ephemeral:true}).catch(()=>{});return true;}
   pendingPermissionRequests.delete(key);
-  await interaction.update({content:`Owner approved moderation permissions for <@${member.id}>. Restored ${roles.length} previously withheld role(s).`,embeds:[],components:[]}).catch(()=>{});
-  await sendLog(interaction.guild,"verification",securityEmbed("BOT MODERATION PERMISSIONS APPROVED",`The server owner approved moderation permissions for <@${member.id}>.`)).catch(()=>{});
+  await interaction.update({content:`Owner approved full release for <@${member.id}>. Restored ${released.restored} previously backed-up role(s).`,embeds:[],components:[]}).catch(()=>{});
+  await sendLog(interaction.guild,"verification",securityEmbed("BOT FULL RELEASE APPROVED",`The server owner approved restoration of the bot's backed-up roles for <@${member.id}>.`)).catch(()=>{});
  }else{
   pendingPermissionRequests.delete(key);
-  await interaction.update({content:`<@${member.id}> remains restricted. No moderation roles were restored.`,embeds:[],components:[]}).catch(()=>{});
-  await sendLog(interaction.guild,"verification",securityEmbed("BOT KEPT RESTRICTED",`The server owner denied moderation permissions for <@${member.id}>.`)).catch(()=>{});
+  await interaction.update({content:`<@${member.id}> remains restricted. Privileged roles stay withheld.`,embeds:[],components:[]}).catch(()=>{});
+  await sendLog(interaction.guild,"verification",securityEmbed("BOT KEPT RESTRICTED",`The server owner denied restoration of privileged roles for <@${member.id}>.`)).catch(()=>{});
  }
  return true;
 }
