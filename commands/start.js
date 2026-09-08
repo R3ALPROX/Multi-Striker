@@ -33,8 +33,18 @@ module.exports={
    const guild=interaction.guild;
    const botMember=guild.members.me||await guild.members.fetch(interaction.client.user.id);
    if(!botMember)throw new Error(`Could not resolve ${BOT_NAME}'s guild member.`);
-   const highestManagedRole=guild.roles.cache.filter(r=>!r.managed&&r.id!==guild.id).sort((a,b)=>b.position-a.position).first();
-   if(highestManagedRole&&highestManagedRole.id!==botMember.roles.highest.id)throw new Error(`${BOT_NAME} must have the highest non-managed role in the server. Move its role to the top before running /start.`);
+
+   // A bot's highest role may itself be Discord-managed. The previous check compared
+   // that managed role's ID with the highest *non-managed* role ID, which can never
+   // match and incorrectly rejected a correctly positioned Multi Striker.
+   const highestManagedRole=guild.roles.cache
+    .filter(r=>!r.managed&&r.id!==guild.id)
+    .sort((a,b)=>b.position-a.position)
+    .first();
+   if(highestManagedRole&&botMember.roles.highest.position<highestManagedRole.position){
+    throw new Error(`${BOT_NAME} must have a role at or above the highest non-managed role. Move its highest role to the top before running /start.`);
+   }
+
    const required=[PermissionFlagsBits.ViewAuditLog,PermissionFlagsBits.ManageRoles,PermissionFlagsBits.ManageChannels,PermissionFlagsBits.ModerateMembers,PermissionFlagsBits.ManageWebhooks];
    const missing=required.filter(p=>!botMember.permissions.has(p));
    if(missing.length)return interaction.editReply(`${BOT_NAME} is missing required permissions. Reinvite it with View Audit Log, Manage Roles, Manage Channels, Moderate Members and Manage Webhooks, then run /start again.`);
