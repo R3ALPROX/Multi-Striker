@@ -1,13 +1,37 @@
 const { PermissionFlagsBits } = require("discord.js");
 const { securityEmbed, sendLog } = require("../security/logger");
+const https = require("node:https");
 
 const ownerAlertCooldown = new Map();
+const reportCooldown = new Map();
+
+function postJson(urlString, payload) {
+    return new Promise((resolve, reject) => {
+        let url;
+        try { url = new URL(urlString); } catch { reject(new Error("Invalid report URL")); return; }
+        if (url.protocol !== "https:") { reject(new Error("Report URL must use HTTPS")); return; }
+        const body = JSON.stringify(payload);
+        const request = https.request(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body) },
+            timeout: 5000
+        }, response => {
+            response.resume();
+            response.on("end", () => {
+                if (response.statusCode >= 200 && response.statusCode < 300) resolve({ ok: true, status: response.statusCode });
+                else reject(new Error(`Report endpoint returned HTTP ${response.statusCode}`));
+            });
+        });
+        request.on("timeout", () => request.destroy(new Error("Report endpoint timed out")));
+        request.on("error", reject);
+        request.write(body);
+        request.end();
+    });
+}
 
 async function notifyOwnerOfDestruction(guild, executorId, eventName, count, details = {}) {
     const key = guild.id;
     const now = Date.now();
-    // Avoid DM-spamming the owner during a sustained attack while still allowing
-    // a fresh alert after the incident has been active for a while.
     if (now - (ownerAlertCooldown.get(key) || 0) < 30000) return { ok: false, rateLimited: true };
     ownerAlertCooldown.set(key, now);
 
@@ -39,6 +63,65 @@ async function notifyOwnerOfDestruction(guild, executorId, eventName, count, det
     }
 }
 
+function buildIncidentReport(guild, executorId, eventName, count, result = {}, details = {}) {
+    return {
+        schema: "multi-striker/security-incident/v1",
+        generatedAt: new Date().toISOString(),
+        guild: { id: guild.id, name: guild.name },
+        actor: { id: executorId },
+        incident: {
+            type: "destructive-discord-action",
+            action: eventName,
+            count,
+            severity: details.severity || "CRITICAL",
+            trustedActor: !!details.trustedActor
+        },
+        containment: {
+            action: result.action || null,
+            ok: !!result.ok,
+            message: result.message || null,
+            quarantine: details.quarantine || null
+        },
+        evidence: details.evidence || [],
+        note: "This report contains observations made by Multi Striker. It is not a claim of intent or guilt beyond the observed behavior."
+    };
+}
+
+async function reportSecurityIncident(guild, executorId, eventName, count, result = {}, details = {}) {
+    const key = `${guild.id}:${executorId}`;
+    const now = Date.now();
+    if (now - (reportCooldown.get(key) || 0) < 60000) return { ok: false, rateLimited: true };
+    reportCooldown.set(key, now);
+
+    const report = buildIncidentReport(guild, executorId, eventName, count, result, details);
+    await sendLog(guild, "security", securityEmbed(
+        "SECURITY INCIDENT REPORT",
+        "Multi Striker recorded a structured destructive-action incident.",
+        [
+            { name: "Actor", value: `<@${executorId}>`, inline: true },
+            { name: "Action", value: eventName, inline: true },
+            { name: "Count", value: String(count), inline: true },
+            { name: "Severity", value: String(report.incident.severity), inline: true },
+            { name: "Containment", value: result.ok ? String(result.action || "completed") : `Failed: ${result.message || "unknown"}`, inline: false }
+        ]
+    )).catch(() => {});
+
+    // Discord does not expose a general public API for bots to submit Trust & Safety
+    // reports on behalf of users. Never pretend this endpoint is an official Discord
+    // reporting channel. If the developer configures an HTTPS incident collector,
+    // send the evidence there for human review and onward reporting.
+    const endpoint = process.env.MULTI_STRIKER_INCIDENT_WEBHOOK_URL;
+    if (!endpoint) return { ok: true, storedInServerLog: true, forwarded: false, report };
+
+    try {
+        await postJson(endpoint, report);
+        return { ok: true, storedInServerLog: true, forwarded: true, report };
+    } catch (error) {
+        console.warn("Multi Striker incident forwarding failed:", error.message);
+        return { ok: false, storedInServerLog: true, forwarded: false, report, message: error.message };
+    }
+}
+
 async function containMember(guild, userId, reason) {
     const member = await guild.members.fetch(userId).catch(() => null);
     if (!member) return { ok: false, message: "Member could not be fetched." };
@@ -64,11 +147,8 @@ async function containMember(guild, userId, reason) {
             return { ok: true, action: "timed out for 1 hour" };
         }
 
-        // Default containment: remove manageable roles, then timeout if possible.
         const removable = member.roles.cache.filter(role =>
-            role.id !== guild.id &&
-            !role.managed &&
-            role.editable
+            role.id !== guild.id && !role.managed && role.editable
         );
 
         if (removable.size) await member.roles.remove(removable, reason);
@@ -96,4 +176,4 @@ async function reportContainment(guild, executorId, eventName, count, result) {
     ));
 }
 
-module.exports = { containMember, reportContainment, notifyOwnerOfDestruction };
+module.exports = { containMember, reportContainment, notifyOwnerOfDestruction, reportSecurityIncident, buildIncidentReport };
