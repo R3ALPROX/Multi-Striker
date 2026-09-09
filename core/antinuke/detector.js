@@ -1,7 +1,7 @@
 const { getGuildConfig } = require("../../config/manager");
 const tracker = require("./tracker");
 const { isTrusted } = require("../security/trust");
-const { containMember, reportContainment, notifyOwnerOfDestruction } = require("./actions");
+const { containMember, reportContainment, notifyOwnerOfDestruction, reportSecurityIncident } = require("./actions");
 const { quarantineMember } = require("../quarantine/manager");
 const { triggerPanic } = require("../panic/manager");
 const { recent } = require("../intelligence/memory");
@@ -44,6 +44,14 @@ async function processSecurityAction(guild, executorId, actionType, targetId) {
     const threshold = config.antinuke.thresholds[thresholdKey];
     if (!threshold) {
         if (slow.risk >= 70 || correlation.coordinated) {
+            const incident = await reportSecurityIncident(guild, executorId, actionType, 1, {
+                ok: false,
+                message: "Cross-vector destructive behavior detected before a single-vector threshold was available."
+            }, {
+                severity: "HIGH",
+                trustedActor,
+                evidence: [{ type: "slow_attack", risk: slow.risk }, { type: "correlation", coordinated: correlation.coordinated }]
+            }).catch(() => null);
             await notifyOwnerOfDestruction(guild, executorId, actionType, 1, {
                 severity: "HIGH",
                 containment: "Cross-vector containment requested"
@@ -93,6 +101,11 @@ async function processSecurityAction(guild, executorId, actionType, targetId) {
     await aiSupervisor.enforce(guild, inspection);
     if (!inspection.healthy) {
         console.warn("AI SUPERVISOR BLOCKED PIPELINE:", { guild: guild.id, executorId, actionType, reason: inspection.reason });
+        await reportSecurityIncident(guild, executorId, actionType, count, { ok: false, message: "AI supervisor blocked automatic containment." }, {
+            severity: "CRITICAL",
+            trustedActor,
+            evidence: [{ type: "ai_supervisor", reason: inspection.reason }]
+        }).catch(() => {});
         await notifyOwnerOfDestruction(guild, executorId, actionType, count, {
             severity: "CRITICAL",
             containment: "AI supervisor blocked automatic containment"
@@ -103,6 +116,11 @@ async function processSecurityAction(guild, executorId, actionType, targetId) {
     const approval = aiSupervisor.approveAction(guild.id, pipeline.plan.action);
     if (!approval.allowed) {
         await aiSupervisor.enforce(guild, { healthy: false, blocked: true, reason: approval.reason });
+        await reportSecurityIncident(guild, executorId, actionType, count, { ok: false, message: approval.reason }, {
+            severity: "CRITICAL",
+            trustedActor,
+            evidence: [{ type: "policy_gate", reason: approval.reason }]
+        }).catch(() => {});
         await notifyOwnerOfDestruction(guild, executorId, actionType, count, {
             severity: "CRITICAL",
             containment: "Automatic containment blocked by safety policy"
@@ -113,6 +131,11 @@ async function processSecurityAction(guild, executorId, actionType, targetId) {
     if (pipeline.plan.action === "MONITOR" || pipeline.plan.action === "VERIFY" || pipeline.plan.action === "ALERT_OWNER") {
         console.warn("AI ACTION:", { guild: guild.id, executorId, actionType, plan: pipeline.plan });
         if (pipeline.plan.action === "ALERT_OWNER") {
+            await reportSecurityIncident(guild, executorId, actionType, count, { ok: false, message: "Security AI requested owner review." }, {
+                severity: "HIGH",
+                trustedActor,
+                evidence: [{ type: "ai_decision", decision: pipeline.decision }]
+            }).catch(() => {});
             await notifyOwnerOfDestruction(guild, executorId, actionType, count, {
                 severity: "HIGH",
                 containment: "Owner alert requested by security AI"
@@ -140,6 +163,18 @@ async function processSecurityAction(guild, executorId, actionType, targetId) {
             supervisor: pipeline.supervisor
         }
     });
+
+    await reportSecurityIncident(guild, executorId, actionType, count, result, {
+        severity: "CRITICAL",
+        trustedActor,
+        quarantine: quarantine.ok ? "Quarantine confirmed" : `Quarantine failed: ${quarantine.reason || "unknown reason"}`,
+        evidence: [
+            { type: "ai_decision", decision: pipeline.decision },
+            { type: "ai_action", action: pipeline.plan.action },
+            { type: "slow_attack", risk: slow.risk },
+            { type: "correlation", coordinated: correlation.coordinated }
+        ]
+    }).catch(() => {});
 
     await notifyOwnerOfDestruction(guild, executorId, actionType, count, {
         severity: "CRITICAL",
