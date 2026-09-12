@@ -3,6 +3,7 @@ const { N } = require("../identity/registry");
 const DEFAULT_MODEL = "gpt-realtime-2.1";
 const DEFAULT_URL = "wss://api.openai.com/v1/realtime";
 const DEFAULT_TIMEOUT_MS = 4500;
+const SECRET_KEY = /^(token|api[_-]?key|secret|authorization)$/i;
 
 function sanitize(value, depth = 0) {
   if (depth > 5) return "[depth-limited]";
@@ -14,7 +15,9 @@ function sanitize(value, depth = 0) {
   if (Array.isArray(value)) return value.slice(0, 50).map(v => sanitize(v, depth + 1));
   if (value && typeof value === "object") {
     const out = {};
-    for (const [key, item] of Object.entries(value).slice(0, 80)) out[key] = sanitize(item, depth + 1);
+    for (const [key, item] of Object.entries(value).slice(0, 80)) {
+      out[key] = SECRET_KEY.test(key) ? `${key}=[redacted]` : sanitize(item, depth + 1);
+    }
     return out;
   }
   return value;
