@@ -1,4 +1,0 @@
-const {AuditLogEvent}=require("discord.js");
-const {processSecurityAction}=require("./detector");
-async function inspectOverwriteChange(entry,guild){if([AuditLogEvent.ChannelOverwriteCreate,AuditLogEvent.ChannelOverwriteUpdate,AuditLogEvent.ChannelOverwriteDelete].includes(entry.action)){await processSecurityAction(guild,entry.executorId,"permissionOverwrite",entry.targetId);return;}const suspicious=entry.changes?.some(c=>String(c.key||"").toLowerCase().includes("permission_overwrite"));if(suspicious)await processSecurityAction(guild,entry.executorId,"permissionOverwrite",entry.targetId);}
-module.exports={inspectOverwriteChange};
