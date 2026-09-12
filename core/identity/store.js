@@ -1,0 +1,7 @@
+const fs=require("node:fs"),path=require("node:path");const file=path.join(process.cwd(),"data","identity.json");let db={profiles:{}};
+function loadProfiles(){try{db=JSON.parse(fs.readFileSync(file,"utf8"));}catch{db={profiles:{}};}return db;}
+function save(){fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,JSON.stringify(db,null,2));}
+function observe(user,guild,kind="member"){const id=user.id;const p=db.profiles[id]||{id,createdAt:user.createdTimestamp,users:[],globals:[],avatars:[],guilds:{},incidents:[],bans:[]};p.createdAt=p.createdAt||user.createdTimestamp;if(user.username&&!p.users.includes(user.username))p.users=[user.username,...p.users].slice(0,20);if(user.globalName&&!p.globals.includes(user.globalName))p.globals=[user.globalName,...p.globals].slice(0,20);if(user.avatar&&!p.avatars.includes(user.avatar))p.avatars=[user.avatar,...p.avatars].slice(0,20);if(guild)p.guilds[guild.id]={joinedAt:p.guilds[guild.id]?.joinedAt||guild.members.cache.get(id)?.joinedTimestamp||null,lastSeenAt:Date.now(),kind};db.profiles[id]=p;save();return p;}
+function incident(id,data){const p=db.profiles[id]||{id,incidents:[],guilds:{},users:[],globals:[],avatars:[]};p.incidents=[{...data,time:Date.now()},...(p.incidents||[])].slice(0,50);db.profiles[id]=p;save();}
+function ban(user,guild,reason){const p=observe(user,guild);p.bans=[{guildId:guild.id,reason,time:Date.now()},...(p.bans||[])].slice(0,50);save();}
+module.exports={loadProfiles,observe,incident,ban};

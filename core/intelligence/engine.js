@@ -1,0 +1,4 @@
+const {N}=require("../identity/registry");
+function assess(signals=[]){const raw=signals.reduce((n,s)=>n+(Number(s.weight)||0),0);const risk=Math.max(0,Math.min(100,raw));const level=risk>=85?N.labels.critical:risk>=60?N.labels.high:risk>=35?N.labels.medium:N.labels.low;const action=risk>=85?N.labels.contain:risk>=60?N.labels.review:N.labels.monitor;return{risk,level,action,signals};}
+function behaviorScore(events){const weights={channel_delete:30,role_delete:35,member_ban:20,member_kick:15,bot_add:10,webhook_delete:25,permission_overwrite:20};return assess(events.map(e=>({weight:weights[e.action]||5,reason:e.action})));}
+module.exports={assess,behaviorScore};

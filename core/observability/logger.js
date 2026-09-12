@@ -1,0 +1,4 @@
+const {EmbedBuilder}=require("discord.js");const {N}=require("../identity/registry");const {getGuildConfig}=require("../config/store");
+function incidentEmbed(i){const sev=i.severity||N.labels.medium;return new EmbedBuilder().setTitle(`${N.product.name} • ${i.title||"Security event"}`).setDescription(i.description||"Security telemetry recorded.").addFields({name:"Type",value:i.type||N.labels.system,inline:true},{name:"Severity",value:sev,inline:true},{name:"Actor",value:i.actor?`<@${i.actor}>`:"System",inline:true},...(i.evidence?[{name:"Evidence",value:String(i.evidence).slice(0,1000)}]:[])).setTimestamp();}
+async function sendLog(guild,incident){const id=getGuildConfig(guild.id).security.logChannelId;if(!id)return false;const ch=guild.channels.cache.get(id)||await guild.channels.fetch(id).catch(()=>null);if(!ch?.isTextBased())return false;await ch.send({embeds:[incidentEmbed(incident)]}).catch(()=>{});return true;}
+module.exports={incidentEmbed,sendLog};

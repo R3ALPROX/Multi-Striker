@@ -1,0 +1,2 @@
+async function forwardIncident(incident){const url=process.env.VORHEX_INCIDENT_WEBHOOK_URL;if(!url)return false;try{const r=await fetch(url,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({source:"VORHEX",incident})});return r.ok;}catch{return false;}}
+module.exports={forwardIncident};

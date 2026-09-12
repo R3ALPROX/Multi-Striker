@@ -1,0 +1,1 @@
+const {SlashCommandBuilder}=require("discord.js");const {N}=require("../core/identity/registry");module.exports={data:new SlashCommandBuilder().setName(N.commands.ping.name).setDescription(N.commands.ping.description),async execute(i){await i.reply({ephemeral:true,content:`${N.product.name} online • gateway ${Math.round(i.client.ws.ping)}ms`});}};

@@ -1,0 +1,20 @@
+require("dotenv").config();
+const fs=require("node:fs");
+const path=require("node:path");
+const {Client,GatewayIntentBits,Partials}=require("discord.js");
+const {N}=require("./core/identity/registry");
+const {loadConfig}=require("./core/config/store");
+const {registerSecurityEvents}=require("./core/security/events");
+const {loadProfiles}=require("./core/identity/store");
+const commandsDir=path.join(__dirname,"commands");
+const commands=[];
+for(const file of fs.readdirSync(commandsDir).filter(f=>f.endsWith(".js"))){const c=require(path.join(commandsDir,file));if(c.data&&c.execute)commands.push(c);}
+const client=new Client({intents:[GatewayIntentBits.Guilds,GatewayIntentBits.GuildMembers,GatewayIntentBits.GuildModeration,GatewayIntentBits.GuildMessages,GatewayIntentBits.MessageContent],partials:[Partials.Channel]});
+loadConfig();loadProfiles();
+client.once("ready",async()=>{console.log(`${N.product.name} online | ${client.user.tag} | ${client.guilds.cache.size} guilds`);for(const guild of client.guilds.cache.values())await registerCommands(guild).catch(console.error);});
+client.on("guildCreate",guild=>registerCommands(guild).catch(console.error));
+client.on("interactionCreate",async i=>{if(!i.isChatInputCommand())return;const c=commands.find(x=>x.data.name===i.commandName);if(!c)return;try{await c.execute(i,client);}catch(e){console.error(e);if(!i.replied&&!i.deferred)await i.reply({content:"Security system command failed safely.",ephemeral:true}).catch(()=>{});}});
+async function registerCommands(guild){const app=client.application;if(!app)return;await guild.commands.set(commands.map(c=>c.data));}
+registerSecurityEvents(client);
+if(!process.env.DISCORD_TOKEN)throw new Error("DISCORD_TOKEN is required");
+client.login(process.env.DISCORD_TOKEN);

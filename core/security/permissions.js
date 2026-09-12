@@ -1,0 +1,1 @@
+const {PermissionFlagsBits}=require("discord.js");function canManage(i){return i.memberPermissions?.has(PermissionFlagsBits.ManageGuild)||i.guild?.ownerId===i.user.id;}module.exports={canManage};

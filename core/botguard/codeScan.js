@@ -1,0 +1,3 @@
+const patterns=[[/child_process\s*\.\s*(exec|spawn|execFile)/i,"process execution"],[/eval\s*\(/i,"dynamic evaluation"],[/new\s+Function\s*\(/i,"dynamic function creation"],[/token\s*[:=]/i,"token handling"],[/webhook/i,"webhook usage"],[/guild\.channels\.cache.*delete/i,"bulk channel deletion pattern"],[/guild\.roles\.cache.*delete/i,"bulk role deletion pattern"]];
+function scanSource(source){if(typeof source!=="string")return{available:false,risk:0,findings:[]};const findings=[];for(const [re,reason] of patterns)if(re.test(source))findings.push(reason);return{available:true,risk:Math.min(100,findings.length*15),findings};}
+module.exports={scanSource};

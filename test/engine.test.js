@@ -1,0 +1,3 @@
+const test=require("node:test");const assert=require("node:assert/strict");const {assess}=require("../core/intelligence/engine");const {scanSource}=require("../core/botguard/codeScan");
+test("risk engine clamps and classifies",()=>{assert.equal(assess([{weight:120}]).risk,100);assert.equal(assess([{weight:90}]).action,"CONTAIN");});
+test("static scanner never executes source",()=>{const r=scanSource("const x=eval(input); child_process.exec(input)");assert.equal(r.available,true);assert.ok(r.findings.length>=2);});
