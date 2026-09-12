@@ -1,6 +1,0 @@
-const {recent}=require("../intelligence/memory");
-const {triggerPanic}=require("../panic/manager");
-const {update}=require("../security/adaptiveLevel");
-const {getGuildConfig}=require("../../config/manager");
-async function evaluateHeatPanic(guild){const cfg=getGuildConfig(guild.id);if(!cfg.antiraid.enabled)return null;const joins=recent(guild.id,30*60*1000).filter(e=>e.type==="member_join"),last30=joins.filter(e=>Date.now()-e.time<=30000),risky=joins.filter(e=>(e.risk||0)>=35),recentRisky=last30.filter(e=>(e.risk||0)>=35);const fast=last30.length>=cfg.antiraid.joinThreshold&&recentRisky.length>=Math.ceil(cfg.antiraid.joinThreshold/2);const slow=joins.length>=cfg.antiraid.slowJoinThreshold&&risky.length>=Math.ceil(cfg.antiraid.slowJoinThreshold/3);if(fast||slow){update(guild.id,fast?90:75);return triggerPanic(guild,fast?"Coordinated raid burst":"Slow distributed raid pattern",{joins:fast?last30.length:joins.length,risky:fast?recentRisky.length:risky.length,mode:fast?"FAST":"SLOW"});}return null;}
-module.exports={evaluateHeatPanic};
