@@ -1,25 +1,30 @@
-const test=require("node:test");
-const assert=require("node:assert/strict");
-const {normalize}=require("../core/intelligence/externalVerifier");
-const {decideWithExternalVerification}=require("../core/intelligence/supervisor");
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const { parseVerdict, sanitize, disabled } = require("../core/ai/externalVerifier");
 
-test("external verifier is advisory-only",()=>{
-  const result=normalize({verdict:"CONFIRMED",confidence:91,reasons:["consistent evidence"]});
-  assert.equal(result.verdict,"CONFIRMED");
-  assert.equal(result.advisoryOnly,true);
-  assert.equal(result.canAct,false);
-  assert.equal(result.canExecuteTools,false);
-  assert.equal(result.canApproveActions,false);
+test("external verifier has no action authority", () => {
+  const result = disabled();
+  assert.equal(result.canAct, false);
+  assert.equal(result.canExecuteTools, false);
+  assert.equal(result.canApproveActions, false);
+  assert.equal(result.authority, "verification_only");
 });
 
-test("external verification cannot become action authority",async()=>{
-  const old=global.fetch;
-  global.fetch=async()=>({ok:true,json:async()=>({output_text:JSON.stringify({verdict:"CONFIRMED",confidence:88,reasons:["independent consistency check"]})})});
-  try{
-    const result=await decideWithExternalVerification({destructive:true,repetition:4,privileged:true},{apiKey:"test-key",timeoutMs:100});
-    assert.equal(result.actionAuthority,"local_supreme_ai_and_policy_only");
-    assert.equal(result.externalCanAct,false);
-    assert.equal(result.externalCanApproveActions,false);
-    assert.equal(result.externalVerification.advisoryOnly,true);
-  }finally{global.fetch=old;}
+test("external verifier parses strict JSON verdicts", () => {
+  const result = parseVerdict('{"verdict":"MALICIOUS","confidence":92,"rationale":"Repeated destructive activity","indicators":["rapid repetition"]}');
+  assert.equal(result.verdict, "MALICIOUS");
+  assert.equal(result.confidence, 92);
+  assert.deepEqual(result.indicators, ["rapid repetition"]);
+});
+
+test("external verifier safely handles malformed output", () => {
+  const result = parseVerdict("SUSPICIOUS behavior detected");
+  assert.equal(result.verdict, "SUSPICIOUS");
+  assert.equal(result.confidence, 0);
+});
+
+test("external verifier redacts obvious secrets", () => {
+  const result = sanitize({ token: "secret-token", nested: { apiKey: "abc123" } });
+  assert.equal(result.token, "token=[redacted]");
+  assert.equal(result.nested.apiKey, "apiKey=[redacted]");
 });
