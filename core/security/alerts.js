@@ -1,1 +1,13 @@
-const {N}=require("../identity/registry");const {sendLog,incidentEmbed}=require("../observability/logger");const {setPanic}=require("../containment/modes");const {forwardIncident}=require("../network/reporter");const cooldown=new Map();async function alert(guild,incident){await sendLog(guild,incident);await forwardIncident({...incident,guildId:guild.id,guildName:guild.name});const owner=await guild.fetchOwner().catch(()=>null);if(!owner)return;const key=`${guild.id}:${incident.type}`;const now=Date.now();if(now-(cooldown.get(key)||0)<30000)return;cooldown.set(key,now);await owner.send({embeds:[incidentEmbed(incident)]}).catch(()=>{});}async function critical(guild,data){setPanic(guild,true,data.description||"critical security signal");return alert(guild,{...data,severity:N.labels.critical});}module.exports={alert,critical};
+const {N}=require("../identity/registry");const {sendLog,incidentEmbed}=require("../observability/logger");const {setPanic}=require("../containment/modes");const {forwardIncident}=require("../network/reporter");const cooldown=new Map();
+async function alert(guild,incident){
+  const key=`${guild.id}:${incident.type}`,now=Date.now(),last=cooldown.get(key)||0;
+  const logPromise=sendLog(guild,incident).catch(()=>false);
+  const networkPromise=forwardIncident({...incident,guildId:guild.id,guildName:guild.name}).catch(()=>false);
+  if(now-last<30000){await Promise.allSettled([logPromise,networkPromise]);return;}
+  cooldown.set(key,now);
+  const ownerPromise=guild.fetchOwner().catch(()=>null);
+  const [,owner]=await Promise.all([Promise.allSettled([logPromise,networkPromise]),ownerPromise]);
+  if(owner)await owner.send({embeds:[incidentEmbed(incident)]}).catch(()=>{});
+}
+async function critical(guild,data){setPanic(guild,true,data.description||"critical security signal");return alert(guild,{...data,severity:N.labels.critical});}
+module.exports={alert,critical};
