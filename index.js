@@ -5,7 +5,7 @@ const {Client,GatewayIntentBits,Partials}=require("discord.js");
 const {N}=require("./core/identity/registry");
 const {loadConfig}=require("./core/config/store");
 const {registerSecurityEvents}=require("./core/security/events");
-const {loadProfiles}=require("./core/identity/store");
+const {loadProfiles}=require("./core/identity/store");\nconst {startLiveTicker}=require("./core/observability/dashboard");
 const commandsDir=path.join(__dirname,"commands");
 const commands=[];
 const startCommand=require(path.join(commandsDir,"start.js"));
@@ -16,6 +16,6 @@ client.once("clientReady",async()=>{console.log(`${N.product.name} online | ${cl
 client.on("guildCreate",guild=>registerCommands(guild).catch(console.error));
 client.on("interactionCreate",async i=>{if(!i.isChatInputCommand())return;const c=commands.find(x=>x.data.name===i.commandName);if(!c)return;try{await c.execute(i,client);}catch(e){console.error(e);if(!i.replied&&!i.deferred)await i.reply({content:"Security system command failed safely.",ephemeral:true}).catch(()=>{});}});
 async function registerCommands(guild){await guild.commands.set(commands.map(c=>c.data));}
-registerSecurityEvents(client);
+registerSecurityEvents(client);\nstartLiveTicker(client);
 if(!process.env.DISCORD_TOKEN)throw new Error("DISCORD_TOKEN is required");
 client.login(process.env.DISCORD_TOKEN);
