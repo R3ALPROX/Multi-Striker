@@ -13,7 +13,9 @@ module.exports={
     let ch=guild.channels.cache.find(c=>c.name===N.channels.logs&&c.type===ChannelType.GuildText);
     if(!ch)ch=await guild.channels.create({name:N.channels.logs,type:ChannelType.GuildText,permissionOverwrites:[{id:guild.roles.everyone.id,deny:[PermissionFlagsBits.ViewChannel]}],reason:`${N.product.name} automatic security initialization`});
     const snap=snapshotGuild(guild);
-    updateGuildConfig(guild.id,{security:{initialized:true,enabled:true,logChannelId:ch.id},organization:{product:N.product.name,ownerId:guild.ownerId}});
+    let canary=guild.channels.cache.find(c=>c.name===N.channels.canary&&c.type===ChannelType.GuildText);
+    if(!canary)canary=await guild.channels.create({name:N.channels.canary,type:ChannelType.GuildText,permissionOverwrites:[{id:guild.roles.everyone.id,deny:[PermissionFlagsBits.ViewChannel]}],reason:"VORHEX automatic canary initialization"});
+    updateGuildConfig(guild.id,{security:{initialized:true,enabled:true,logChannelId:ch.id},canary:{channelId:canary.id,marker:"VORHEX-CANARY"},organization:{product:N.product.name,ownerId:guild.ownerId}});
     started(guild,1);
     await ensureDashboard(guild);
     await i.reply({content:`${N.product.name} is now fully automatic.\\n\\nOnly /start is required.\\nLive dashboard: <#${(require("../core/config/store").getGuildConfig(guild.id).dashboard.channelId)}>\\nSecurity logs: ${ch}\\nBaseline snapshot: captured`,ephemeral:true});
