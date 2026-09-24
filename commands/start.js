@@ -1,2 +1,21 @@
-const {SlashCommandBuilder,PermissionFlagsBits,ChannelType}=require("discord.js");const {N}=require("../core/identity/registry");const {updateGuildConfig}=require("../core/config/store");const {canManage}=require("../core/security/permissions");const {snapshotGuild}=require("../core/recovery/snapshot");
-module.exports={data:new SlashCommandBuilder().setName(N.commands.start.name).setDescription(N.commands.start.description),async execute(i){if(!canManage(i))return i.reply({content:"Manage Server permission required.",ephemeral:true});const guild=i.guild;let ch=guild.channels.cache.find(c=>c.name===N.channels.logs&&c.type===ChannelType.GuildText);if(!ch)ch=await guild.channels.create({name:N.channels.logs,type:ChannelType.GuildText,permissionOverwrites:[{id:guild.roles.everyone.id,deny:[PermissionFlagsBits.ViewChannel]}],reason:`${N.product.name} automatic security initialization`});snapshotGuild(guild);updateGuildConfig(guild.id,{security:{initialized:true,enabled:true,logChannelId:ch.id},organization:{product:N.product.name,ownerId:guild.ownerId}});await i.reply({content:`${N.product.name} is now fully automatic.\n\nLocal Supreme AI: autonomous detection + policy + actions\nGPT 2.1: independent automatic verification\nHuman commands: /start only\nSecurity logs: ${ch}\nBaseline snapshot: captured`,ephemeral:true});}};
+const {SlashCommandBuilder,PermissionFlagsBits,ChannelType}=require("discord.js");
+const {N}=require("../core/identity/registry");
+const {updateGuildConfig}=require("../core/config/store");
+const {canManage}=require("../core/security/permissions");
+const {snapshotGuild}=require("../core/recovery/snapshot");
+const {ensureDashboard,started}=require("../core/observability/dashboard");
+
+module.exports={
+  data:new SlashCommandBuilder().setName(N.commands.start.name).setDescription(N.commands.start.description),
+  async execute(i){
+    if(!canManage(i))return i.reply({content:"Manage Server permission required.",ephemeral:true});
+    const guild=i.guild;
+    let ch=guild.channels.cache.find(c=>c.name===N.channels.logs&&c.type===ChannelType.GuildText);
+    if(!ch)ch=await guild.channels.create({name:N.channels.logs,type:ChannelType.GuildText,permissionOverwrites:[{id:guild.roles.everyone.id,deny:[PermissionFlagsBits.ViewChannel]}],reason:`${N.product.name} automatic security initialization`});
+    const snap=snapshotGuild(guild);
+    updateGuildConfig(guild.id,{security:{initialized:true,enabled:true,logChannelId:ch.id},organization:{product:N.product.name,ownerId:guild.ownerId}});
+    started(guild,1);
+    await ensureDashboard(guild);
+    await i.reply({content:`${N.product.name} is now fully automatic.\\n\\nOnly /start is required.\\nLive dashboard: <#${(require("../core/config/store").getGuildConfig(guild.id).dashboard.channelId)}>\\nSecurity logs: ${ch}\\nBaseline snapshot: captured`,ephemeral:true});
+  }
+};
