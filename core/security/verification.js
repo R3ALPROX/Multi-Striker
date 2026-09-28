@@ -1,5 +1,3 @@
-const {UserFlags}=require("discord.js");
-
 const profiles=new Map();
 
 async function inspect(member){
@@ -15,7 +13,7 @@ async function inspect(member){
     accountAgeDays:user.createdAt?Math.floor((Date.now()-user.createdAt.getTime())/86400000):null,
     publicFlags:flags?.toArray?.()||[],
     verifiedBot:Boolean(user.bot&&flags?.has?.(UserFlags.VerifiedBot)),
-    verifiedBotDeveloper:Boolean(user.bot&&flags?.has?.(UserFlags.VerifiedDeveloper)),
+    verifiedBotDeveloper:Boolean(user.bot&&flags?.has?.("VerifiedDeveloper")),
     profileFetched:true,
     inspectedAt:Date.now()
   };
