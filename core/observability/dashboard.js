@@ -7,7 +7,7 @@ const states=new Map();
 function getState(guild){
   let s=states.get(guild.id);
   if(!s){
-    s={startedAt:Date.now(),incidents:0,blocked:0,snapshots:0,threat:"LOW",status:"PROTECTED",lastUpdate:0};
+    s={startedAt:Date.now(),incidents:0,blocked:0,snapshots:0,threat:"LOW",status:"PROTECTED",lastUpdate:0,events:[],latestSnapshot:null,latestIncident:null};
     states.set(guild.id,s);
   }
   return s;
@@ -33,6 +33,15 @@ function dashboardText(guild){
     `║ BLOCKED      ${String(s.blocked).padEnd(14)}║`,
     `║ SNAPSHOTS    ${String(s.snapshots).padEnd(14)}║`,
     `║ UPTIME       ${fmt(Date.now()-s.startedAt).padEnd(14)}║`,
+    "╠══════════════════════════════╣",
+    "║ LIVE SECURITY FEED           ║",
+    ...(s.events.length?s.events.slice(-5).reverse().map(e=>`║ ${e.time} • ${e.text}`.slice(0,31).padEnd(30)+"║"):["║ No recent security events.   ║"]),
+    "╠══════════════════════════════╣",
+    "║ LATEST INCIDENT              ║",
+    `║ ${(s.latestIncident?.title||"None").slice(0,28).padEnd(28)} ║`,
+    "╠══════════════════════════════╣",
+    "║ RECOVERY BASELINE            ║",
+    `║ ${s.latestSnapshot?`Captured ${new Date(s.latestSnapshot.time).toLocaleTimeString()}`:"Waiting for snapshot"}`.slice(0,30).padEnd(30)+"║",
     "╠══════════════════════════════╣",
     "║          ● LIVE              ║",
     `║ Last update ${new Date().toLocaleTimeString().padEnd(12)}║`,
@@ -78,11 +87,14 @@ function started(guild,snapshotCount=1){
   s.threat="LOW";
 }
 
-function recordIncident(guild,severity){
+function recordIncident(guild,severity,incident={}){
   const s=getState(guild);s.incidents++;
   if(severity===N.labels.critical)s.threat="CRITICAL";
   else if(severity===N.labels.high&&s.threat!=="CRITICAL")s.threat="HIGH";
   else if(severity===N.labels.medium&&s.threat==="LOW")s.threat="ELEVATED";
+  s.latestIncident={title:incident.title||"Security event",severity,time:Date.now()};
+  s.events.push({time:new Date().toLocaleTimeString(),text:(incident.title||"Security event")+" • "+severity});
+  if(s.events.length>20)s.events.shift();
   void refresh(guild);
 }
 
@@ -110,4 +122,4 @@ function startLiveTicker(client){
   },15000).unref();
 }
 
-module.exports={ensureDashboard,started,recordIncident,recordBlocked,recordSnapshot,recoverThreat,startLiveTicker};
+module.exports={ensureDashboard,started,recordIncident,recordLiveEvent,recordBlocked,recordSnapshot,recoverThreat,startLiveTicker};
