@@ -5,7 +5,8 @@ const {Client,GatewayIntentBits,Partials}=require("discord.js");
 const {N}=require("./core/identity/registry");
 const {loadConfig}=require("./core/config/store");
 const {registerSecurityEvents}=require("./core/security/events");
-const {loadProfiles}=require("./core/identity/store");\nconst {startLiveTicker}=require("./core/observability/dashboard");
+const {loadProfiles}=require("./core/identity/store");
+const {startLiveTicker}=require("./core/observability/dashboard");
 const {snapshotGuild}=require("./core/recovery/snapshot");
 const {getGuildConfig}=require("./core/config/store");
 const {recordSnapshot}=require("./core/observability/dashboard");
@@ -20,7 +21,8 @@ client.once("clientReady",async()=>{console.log(`${N.product.name} online | ${cl
 client.on("guildCreate",guild=>registerCommands(guild).catch(console.error));
 client.on("interactionCreate",async i=>{if(!i.isChatInputCommand())return;const c=commands.find(x=>x.data.name===i.commandName);if(!c)return;try{await c.execute(i,client);}catch(e){console.error(e);if(!i.replied&&!i.deferred)await i.reply({content:"Security system command failed safely.",ephemeral:true}).catch(()=>{});}});
 async function registerCommands(guild){await guild.commands.set(commands.map(c=>c.data));}
-registerSecurityEvents(client);\nstartLiveTicker(client);
+registerSecurityEvents(client);
+startLiveTicker(client);
 setInterval(()=>{for(const guild of client.guilds.cache.values()){const cfg=getGuildConfig(guild.id);if(!cfg.security?.initialized||!cfg.security?.enabled)continue;const s=snapshotGuild(guild);if(s){recordSnapshot(guild);void sendLog(guild,{title:"Automatic recovery snapshot",description:"VORHEX captured a new rolling recovery baseline.",type:"RECOVERY",severity:"LOW",actor:null,evidence:"snapshot_time="+s.time});}}},5*60*1000).unref();
 if(!process.env.DISCORD_TOKEN)throw new Error("DISCORD_TOKEN is required");
 client.login(process.env.DISCORD_TOKEN);
