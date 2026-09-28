@@ -23,6 +23,6 @@ client.on("interactionCreate",async i=>{if(!i.isChatInputCommand())return;const 
 async function registerCommands(guild){await guild.commands.set(commands.map(c=>c.data));}
 registerSecurityEvents(client);
 startLiveTicker(client);
-setInterval(()=>{for(const guild of client.guilds.cache.values()){const cfg=getGuildConfig(guild.id);if(!cfg.security?.initialized||!cfg.security?.enabled)continue;const s=snapshotGuild(guild);if(s){recordSnapshot(guild);void sendLog(guild,{title:"Automatic recovery snapshot",description:"VORHEX captured a new rolling recovery baseline.",type:"RECOVERY",severity:"LOW",actor:null,evidence:"snapshot_time="+s.time});}}},5*60*1000).unref();
+setInterval(()=>{for(const guild of client.guilds.cache.values()){const cfg=getGuildConfig(guild.id);if(!cfg.security?.initialized||!cfg.security?.enabled)continue;const s=snapshotGuild(guild);if(s){recordSnapshot(guild,s);}}},5*60*1000).unref();
 if(!process.env.DISCORD_TOKEN)throw new Error("DISCORD_TOKEN is required");
 client.login(process.env.DISCORD_TOKEN);
