@@ -1,6 +1,8 @@
 const {PermissionFlagsBits}=require("discord.js");
 const {N}=require("../identity/registry");
 
+const roleSnapshots=new Map();
+
 async function ensureRole(guild){
   let role=guild.roles.cache.find(r=>r.name===N.roles.quarantine);
   if(!role){
@@ -31,7 +33,14 @@ async function quarantine(member,reason="Immediate join quarantine"){
   if(!member?.guild||member.user?.bot)return null;
 
   const role=await ensureRole(member.guild);
-  const removableRoles=member.roles.cache.filter(currentRole => currentRole.id!==member.guild.id && currentRole.id!==role.id && currentRole.editable);
+  const removableRoles=member.roles.cache.filter(currentRole =>
+    currentRole.id!==member.guild.id &&
+    currentRole.id!==role.id &&
+    currentRole.editable
+  );
+
+  roleSnapshots.set(member.id,[...removableRoles.keys()]);
+
   if(removableRoles.size) await member.roles.remove(removableRoles,reason);
   await member.roles.add(role,reason);
   await lockChannels(member.guild,role);
@@ -40,6 +49,7 @@ async function quarantine(member,reason="Immediate join quarantine"){
     guildId:member.guild.id,
     memberId:member.id,
     roleId:role.id,
+    previousRoleIds:[...removableRoles.keys()],
     reason,
     time:Date.now()
   };
@@ -47,11 +57,19 @@ async function quarantine(member,reason="Immediate join quarantine"){
 
 async function release(member){
   if(!member?.guild)return false;
+
   const role=member.guild.roles.cache.find(r=>r.name===N.roles.quarantine);
   if(!role)return false;
-  if(member.roles.cache.has(role.id)){
-    await member.roles.remove(role,"VORHEX verification passed");
-  }
+
+  const previousRoleIds=roleSnapshots.get(member.id)||[];
+  const restorable=previousRoleIds
+    .map(id=>member.guild.roles.cache.get(id))
+    .filter(r=>r?.editable&&r.id!==role.id&&r.id!==member.guild.id);
+
+  if(restorable.length) await member.roles.add(restorable,"VORHEX verification passed");
+  if(member.roles.cache.has(role.id)) await member.roles.remove(role,"VORHEX verification passed");
+
+  roleSnapshots.delete(member.id);
   return true;
 }
 
