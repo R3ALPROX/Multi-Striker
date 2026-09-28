@@ -98,12 +98,14 @@ function recordIncident(guild,severity,incident={}){
   void refresh(guild);
 }
 
+function recordLiveEvent(guild,text){const s=getState(guild);s.events.push({time:new Date().toLocaleTimeString(),text:String(text).slice(0,100)});if(s.events.length>20)s.events.shift();void refresh(guild);}
+
 function recordBlocked(guild){
   const s=getState(guild);s.blocked++;s.threat=s.threat==="CRITICAL"?"CRITICAL":"ELEVATED";void refresh(guild);
 }
 
-function recordSnapshot(guild){
-  const s=getState(guild);s.snapshots++;void refresh(guild);
+function recordSnapshot(guild,snapshot){
+  const s=getState(guild);s.snapshots++;s.latestSnapshot={time:snapshot?.time||Date.now()};recordLiveEvent(guild,"Automatic recovery snapshot captured");
 }
 
 function recoverThreat(guild){
