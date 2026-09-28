@@ -1,5 +1,43 @@
 const {N}=require("../identity/registry");
-function assess(signals=[]){const raw=signals.reduce((n,s)=>n+(Number(s.weight)||0),0);const risk=Math.max(0,Math.min(100,raw));const level=risk>=85?N.labels.critical:risk>=60?N.labels.high:risk>=35?N.labels.medium:N.labels.low;const action=risk>=85?N.labels.contain:risk>=60?N.labels.review:N.labels.monitor;return{risk,level,action,signals};}
-function behaviorScore(events=[]){const weights={channel_delete:30,role_delete:35,member_ban:20,member_kick:15,bot_add:10,webhook_delete:25,permission_overwrite:20};const actors=new Set(events.map(e=>e.actor).filter(Boolean)).size;const actions=new Set(events.map(e=>e.action).filter(Boolean)).size;const burst=Math.min(25,Math.max(0,events.length-1)*5);const diversity=Math.min(20,actions*4);const coordination=actors>1?15:0;return assess(events.map(e=>({weight:weights[e.action]||5,reason:e.action})).concat([{weight:burst,reason:"burst_activity"},{weight:diversity,reason:"action_diversity"},{weight:coordination,reason:"multi_actor_correlation"}]));}
-function correlate(signals=[]){const normalized=signals.map(s=>({...s,weight:Number(s.weight)||0}));const repeated=normalized.filter(s=>s.repeated||s.repetition>1).length;const privileged=normalized.filter(s=>s.privileged).length;const destructive=normalized.filter(s=>s.destructive).length;return assess(normalized.concat([{weight:Math.min(20,repeated*5),reason:"repetition_correlation"},{weight:Math.min(20,privileged*5),reason:"privileged_activity"},{weight:Math.min(30,destructive*10),reason:"destructive_activity"}]));}
-module.exports={assess,behaviorScore,correlate};
+
+function assess(signals=[]){
+  const raw=signals.reduce((n,s)=>n+(Number(s.weight)||0),0);
+  const risk=Math.max(0,Math.min(100,raw));
+  const level=risk>=85?N.labels.critical:risk>=60?N.labels.high:risk>=35?N.labels.medium:N.labels.low;
+  const action=risk>=85?N.labels.contain:risk>=60?N.labels.review:N.labels.monitor;
+  return{risk,level,action,signals};
+}
+
+function classify(observation={},risk=0){
+  const destructive=Boolean(observation.destructive);
+  const repeated=Number(observation.repetition||observation.recent||0)>=3;
+  const privileged=Boolean(observation.privileged);
+  const coordinated=Boolean(observation.coordinated);
+  const selfProtection=observation.event==="self_protection";
+  const botRisk=Number(observation.risk||0)>=85;
+  const explicitAttack=Boolean(observation.attack);
+  if(explicitAttack||selfProtection||botRisk||(destructive&&repeated)||(destructive&&coordinated))return "ATTACK";
+  if(risk>=85&&destructive)return "SUSPECTED_ATTACK";
+  if(destructive||privileged||repeated)return "SECURITY_ACTIVITY";
+  return "NORMAL_ACTIVITY";
+}
+
+function behaviorScore(events=[]){
+  const weights={channel_delete:30,role_delete:35,member_ban:20,member_kick:15,bot_add:10,webhook_delete:25,permission_overwrite:20};
+  const actors=new Set(events.map(e=>e.actor).filter(Boolean)).size;
+  const actions=new Set(events.map(e=>e.action).filter(Boolean)).size;
+  const burst=Math.min(25,Math.max(0,events.length-1)*5);
+  const diversity=Math.min(20,actions*4);
+  const coordination=actors>1?15:0;
+  return assess(events.map(e=>({weight:weights[e.action]||5,reason:e.action})).concat([{weight:burst,reason:"burst_activity"},{weight:diversity,reason:"action_diversity"},{weight:coordination,reason:"multi_actor_correlation"}]));
+}
+
+function correlate(signals=[]){
+  const normalized=signals.map(s=>({...s,weight:Number(s.weight)||0}));
+  const repeated=normalized.filter(s=>s.repeated||s.repetition>1).length;
+  const privileged=normalized.filter(s=>s.privileged).length;
+  const destructive=normalized.filter(s=>s.destructive).length;
+  return assess(normalized.concat([{weight:Math.min(20,repeated*5),reason:"repetition_correlation"},{weight:Math.min(20,privileged*5),reason:"privileged_activity"},{weight:Math.min(30,destructive*10),reason:"destructive_activity"}]));
+}
+
+module.exports={assess,classify,behaviorScore,correlate};
