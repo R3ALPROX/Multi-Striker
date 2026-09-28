@@ -3,6 +3,7 @@ const {N}=require("../identity/registry");
 const {getGuildConfig,updateGuildConfig}=require("../config/store");
 
 const states=new Map();
+const {getMonitoringState}=require("./monitor");
 
 function getState(guild){
   let s=states.get(guild.id);
@@ -21,6 +22,7 @@ function fmt(ms){
 
 function dashboardText(guild){
   const s=getState(guild);
+  const m=getMonitoringState(guild);
   const threat=s.threat;
   const status=s.status;
   return [
@@ -33,6 +35,11 @@ function dashboardText(guild){
     `║ BLOCKED      ${String(s.blocked).padEnd(14)}║`,
     `║ SNAPSHOTS    ${String(s.snapshots).padEnd(14)}║`,
     `║ UPTIME       ${fmt(Date.now()-s.startedAt).padEnd(14)}║`,
+    `║ MONITOR      ${m.status.padEnd(14)}║`,
+    `║ LATENCY      ${String(m.latency)+"ms"}`.padEnd(31)+"║",
+    `║ MEMBERS      ${String(m.members).padEnd(14)}║`,
+    `║ BOTS         ${String(m.bots).padEnd(14)}║`,
+    `║ CHANNELS     ${String(m.channels).padEnd(14)}║`,
     "╠══════════════════════════════╣",
     "║ LIVE SECURITY FEED           ║",
     ...(s.events.length?s.events.slice(-5).reverse().map(e=>`║ ${e.time} • ${e.text}`.slice(0,31).padEnd(30)+"║"):["║ No recent security events.   ║"]),
