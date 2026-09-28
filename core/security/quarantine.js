@@ -31,6 +31,8 @@ async function quarantine(member,reason="Immediate join quarantine"){
   if(!member?.guild||member.user?.bot)return null;
 
   const role=await ensureRole(member.guild);
+  const removableRoles=member.roles.cache.filter(currentRole => currentRole.id!==member.guild.id && currentRole.id!==role.id && currentRole.editable);
+  if(removableRoles.size) await member.roles.remove(removableRoles,reason);
   await member.roles.add(role,reason);
   await lockChannels(member.guild,role);
 
