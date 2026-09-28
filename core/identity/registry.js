@@ -4,7 +4,7 @@ const N={
   features:{panic:"panic_mode",raid:"raid_mode",quarantine:"quarantine",antiNuke:"anti_nuke",botGuard:"bot_guard",memberGuard:"member_guard",identity:"identity_profiles",adaptive:"adaptive_risk",audit:"audit_monitor",incident:"incident_reporting",recovery:"recovery_snapshots",selfProtection:"self_protection",network:"evidence_network",codeScan:"static_code_analysis",externalVerifier:"gpt_2_1_advisory_verifier",localSupremeAI:"local_supreme_ai"},
   ai:{local:{name:"Local Supreme AI",authority:"decision_and_policy",canAct:true,canExecuteTools:true,canApproveActions:true},external:{name:"GPT 2.1",authority:"verification_only",canAct:false,canExecuteTools:false,canApproveActions:false,transport:"realtime_websocket",defaultModel:"gpt-realtime-2.1"}},
   env:{discordToken:"DISCORD_TOKEN",externalEnabled:"VORHEX_EXTERNAL_VERIFIER",openAiKey:"OPENAI_API_KEY",realtimeModel:"OPENAI_REALTIME_MODEL",realtimeUrl:"OPENAI_REALTIME_URL",verifierTimeout:"OPENAI_VERIFIER_TIMEOUT_MS"},
-  channels:{logs:"security-logs"},
+  channels:{logs:"security-logs",canary:"vorhex-canary"},
   roles:{quarantine:"Quarantined"},
   containmentModes:{quarantine:"quarantine",timeout:"timeout",ban:"ban"},
   labels:{system:"SYSTEM",moderation:"MODERATION",raid:"RAID",security:"SECURITY",critical:"CRITICAL",high:"HIGH",medium:"MEDIUM",low:"LOW",monitor:"MONITOR",review:"REVIEW",contain:"CONTAIN",blocked:"BLOCKED"},
