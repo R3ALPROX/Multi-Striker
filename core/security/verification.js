@@ -12,7 +12,7 @@ async function inspect(member){
     accountCreatedAt:user.createdAt?.toISOString?.()||null,
     accountAgeDays:user.createdAt?Math.floor((Date.now()-user.createdAt.getTime())/86400000):null,
     publicFlags:flags?.toArray?.()||[],
-    verifiedBot:Boolean(user.bot&&flags?.has?.(UserFlags.VerifiedBot)),
+    verifiedBot:Boolean(user.bot&&flags?.toArray?.().includes("VerifiedBot")),
     verifiedBotDeveloper:Boolean(user.bot&&flags?.has?.("VerifiedDeveloper")),
     profileFetched:true,
     inspectedAt:Date.now()
