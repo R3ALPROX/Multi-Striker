@@ -15,6 +15,7 @@ const readline=require("node:readline");
 const {handleJoin,handleHumanVerification}=require("./core/security/members");
 const {verifyAllGuilds}=require("./core/security/serverVerification");
 const {startMonitoring}=require("./core/observability/monitor");
+const {registerDefense}=require("./core/security/defense");
 const commandsDir=path.join(__dirname,"commands");
 const commands=[];
 const startCommand=require(path.join(commandsDir,"start.js"));
@@ -27,6 +28,7 @@ client.on("guildMemberAdd",member=>{void handleJoin(member);});
 client.on("interactionCreate",async i=>{if(i.isButton()){await handleHumanVerification(i).catch(console.error);return;}if(!i.isChatInputCommand())return;const c=commands.find(x=>x.data.name===i.commandName);if(!c)return;try{await c.execute(i,client);}catch(e){console.error(e);if(!i.replied&&!i.deferred)await i.reply({content:"Security system command failed safely.",ephemeral:true}).catch(()=>{});}});
 async function registerCommands(guild){await guild.commands.set(commands.map(c=>c.data));}
 registerSecurityEvents(client);
+registerDefense(client);
 startLiveTicker(client);
 setInterval(()=>{for(const guild of client.guilds.cache.values()){const cfg=getGuildConfig(guild.id);if(!cfg.security?.initialized||!cfg.security?.enabled)continue;const s=snapshotGuild(guild);if(s){recordSnapshot(guild,s);}}},5*60*1000).unref();
 if(!process.env.DISCORD_TOKEN)throw new Error("DISCORD_TOKEN is required");
