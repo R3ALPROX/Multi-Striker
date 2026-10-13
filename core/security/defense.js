@@ -2,7 +2,6 @@ const {AuditLogEvent}=require("discord.js");
 const {getGuildConfig}=require("../config/store");
 const {N}=require("../identity/registry");
 const {contain}=require("./actions");
-const {PermissionFlagsBits}=require("discord.js");
 const {critical,alert}=require("./alerts");
 
 const messageWindows=new Map();
