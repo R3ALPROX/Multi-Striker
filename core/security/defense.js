@@ -2,6 +2,7 @@ const {AuditLogEvent}=require("discord.js");
 const {getGuildConfig}=require("../config/store");
 const {N}=require("../identity/registry");
 const {contain}=require("./actions");
+const {PermissionFlagsBits}=require("discord.js");
 const {critical,alert}=require("./alerts");
 
 const messageWindows=new Map();
@@ -63,7 +64,7 @@ function registerDefense(client){
     if(!cfg.security?.initialized||!cfg.security?.enabled)return;
     const count=pushWindow(destructiveWindows,guild.id+":"+entry.executorId,12000);
     const perAction=pushWindow(destructiveWindows,guild.id+":"+entry.executorId+":"+entry.action,12000);
-    if(count<3&&perAction<2)return;
+    if(count<2&&perAction<2)return;
 
     const result=await contain(guild,entry.executorId,"VORHEX anti-nuke: destructive audit-log burst");
     await critical(guild,{
