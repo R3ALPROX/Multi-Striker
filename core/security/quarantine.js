@@ -39,7 +39,7 @@ async function quarantine(member,reason="Immediate join quarantine"){
     currentRole.editable
   );
 
-  roleSnapshots.set(member.id,[...removableRoles.keys()]);
+  roleSnapshots.set(`${member.guild.id}:${member.id}`,[...removableRoles.keys()]);
 
   if(removableRoles.size) await member.roles.remove(removableRoles,reason);
   await member.roles.add(role,reason);
@@ -61,7 +61,8 @@ async function release(member){
   const role=member.guild.roles.cache.find(r=>r.name===N.roles.quarantine);
   if(!role)return false;
 
-  const previousRoleIds=roleSnapshots.get(member.id)||[];
+  const key=`${member.guild.id}:${member.id}`;
+  const previousRoleIds=roleSnapshots.get(key)||[];
   const restorable=previousRoleIds
     .map(id=>member.guild.roles.cache.get(id))
     .filter(r=>r?.editable&&r.id!==role.id&&r.id!==member.guild.id);
@@ -69,7 +70,7 @@ async function release(member){
   if(restorable.length) await member.roles.add(restorable,"VORHEX verification passed");
   if(member.roles.cache.has(role.id)) await member.roles.remove(role,"VORHEX verification passed");
 
-  roleSnapshots.delete(member.id);
+  roleSnapshots.delete(key);
   return true;
 }
 
