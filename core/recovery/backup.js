@@ -54,12 +54,17 @@ function verifySnapshot(s,guildId){
   }
   return {ok:true,hash:hash(s),verifiedAt:Date.now()};
 }
-async function capture(guild,{destructive=false,reason="verified server change"}={}){
+async function capture(guild,{destructive=false,onlyIfMissing=false,reason="verified server change"}={}){
   await guild.roles.fetch().catch(()=>{});
   await guild.channels.fetch().catch(()=>{});
   const candidate=snapshot(guild),check=verifySnapshot(candidate,guild.id);
   if(!check.ok)throw new Error("Backup verification failed: "+check.reason);
   const db=read(guild.id);
+  if(onlyIfMissing&&db.main&&db.main.trust==="VERIFIED"){
+    const existing=verifySnapshot(db.main,guild.id);
+    if(existing.ok&&db.main.integrityHash===existing.hash)
+      return {slot:"main",trust:"VERIFIED",hash:existing.hash,existing:true};
+  }
   if(!Object.prototype.hasOwnProperty.call(db,"previous"))db.previous=null;
   if(!Object.prototype.hasOwnProperty.call(db,"manual"))db.manual=null;
   const packed={...candidate,integrityHash:check.hash,verifiedAt:check.verifiedAt,reason};
