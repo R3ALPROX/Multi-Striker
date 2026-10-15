@@ -44,7 +44,7 @@ async function handleHumanVerification(interaction){
   const member=await interaction.guild?.members.fetch(interaction.user.id).catch(()=>null);
   if(!member)return false;
 
-  const profile=getProfile(member.id);
+  const profile=getProfile(member.guild.id,member.id);
   if(!profile||profile.isBot){
     await interaction.reply({content:"Verification state is invalid. VORHEX will keep this account quarantined for review.",ephemeral:true}).catch(()=>{});
     return true;
