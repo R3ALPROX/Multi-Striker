@@ -124,8 +124,12 @@ function compareToMain(guild){
 }
 function toOverwriteOptions(entries,roleIdMap,guild){
   return entries.map(o=>{
-    const mapped=roleIdMap.get(o.id)||o.id;
-    if(!guild.roles.cache.has(mapped)&&!guild.members.cache.has(mapped))return null;
+    // @everyone overwrites use the guild ID; recreated roles use their new IDs.
+    const mapped=o.id===guild.id?guild.id:(roleIdMap.get(o.id)||o.id);
+    const isRoleOverwrite=o.type===0||o.type==="role";
+    if(isRoleOverwrite&&mapped!==guild.id&&!guild.roles.cache.has(mapped))return null;
+    // Keep member overwrites even if that member is not currently cached.
+    if(!isRoleOverwrite&&o.type!==1&&o.type!=="member")return null;
     return {id:mapped,allow:BigInt(o.allow),deny:BigInt(o.deny),type:o.type};
   }).filter(Boolean);
 }
@@ -141,7 +145,7 @@ async function restoreMissingStructure(guild,requestedSlot="main"){
   const report={ok:true,sourceSlot,restoredChannels:[],restoredRoles:[],skipped:[],beforeHash:hash(snapshot(guild)),backupHash:backup.integrityHash};
   const roleIdMap=new Map();
   for(const saved of backup.roles){
-    if(saved.name==="@everyone")continue;
+    if(saved.name==="@everyone"){roleIdMap.set(saved.id,guild.id);continue;}
     const existing=guild.roles.cache.find(r=>r.name===saved.name);
     if(existing){roleIdMap.set(saved.id,existing.id);continue;}
     if(saved.managed){report.skipped.push({type:"role",name:saved.name,reason:"managed role cannot be recreated by the bot"});continue;}
