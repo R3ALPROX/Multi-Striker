@@ -80,15 +80,20 @@ function compareToMain(guild){
   return {comparable:true,mainHash:main.integrityHash,currentHash:hash(current),missingRoles:main.roles.filter(r=>!current.roles.some(c=>c.name===r.name)),missingChannels:main.channels.filter(c=>!channelIds.has(c.id)),newRoles:current.roles.filter(r=>!main.roles.some(c=>c.name===r.name)),newChannels:current.channels.filter(c=>!main.channels.some(m=>m.id===c.id)),currentMatchesMain:hash({...current,capturedAt:main.capturedAt})===main.integrityHash};
 }
 async function restoreMissingStructure(guild){
-  const db=read(guild.id),backup=db.main;
-  if(!backup||backup.trust!=="VERIFIED")return {ok:false,reason:"no_verified_main_backup"};
-  const check=verifySnapshot(backup,guild.id);
-  if(!check.ok||backup.integrityHash!==check.hash)return {ok:false,reason:"backup_integrity_check_failed"};
+  const db=read(guild.id);
+  let backup=db.main,sourceSlot="main";
+  let check=backup&&backup.trust==="VERIFIED"?verifySnapshot(backup,guild.id):{ok:false};
+  if(!check.ok||backup.integrityHash!==check.hash){
+    backup=db.previous;sourceSlot="previous";
+    check=backup&&backup.trust==="VERIFIED"?verifySnapshot(backup,guild.id):{ok:false};
+  }
+  if(!backup||backup.trust!=="VERIFIED"||!check.ok||backup.integrityHash!==check.hash)
+    return {ok:false,reason:"no_integrity_valid_trusted_backup"};
   await guild.roles.fetch().catch(()=>{});await guild.channels.fetch().catch(()=>{});
   const before=snapshot(guild);
   const deletedChannels=backup.channels.filter(c=>!guild.channels.cache.has(c.id));
   const deletedRoles=backup.roles.filter(r=>!guild.roles.cache.some(x=>x.name===r.name)&&!r.managed&&r.name!=="@everyone");
-  const report={ok:true,restoredChannels:[],restoredRoles:[],skipped:[],beforeHash:hash(before),backupHash:backup.integrityHash};
+  const report={ok:true,sourceSlot,restoredChannels:[],restoredRoles:[],skipped:[],beforeHash:hash(before),backupHash:backup.integrityHash};
   for(const r of deletedRoles){
     try{
       const role=await guild.roles.create({name:r.name,color:r.color,hoist:r.hoist,mentionable:r.mentionable,permissions:BigInt(r.permissions),reason:"VORHEX verified-main recovery"});
