@@ -94,7 +94,7 @@ async function restoreMissingStructure(guild,requestedSlot="main"){
   const db=read(guild.id);
   const allowedSlots=new Set(["main","previous","secondary","manual"]);
   if(!allowedSlots.has(requestedSlot))return {ok:false,reason:"invalid_backup_slot"};
-  const backup=db[requestedSlot];
+  const backup=db[requestedSlot],sourceSlot=requestedSlot;
   const acceptedTrust=requestedSlot==="manual"?"VERIFIED_MANUAL":requestedSlot==="secondary"?"UNTRUSTED_PENDING_REVIEW":"VERIFIED";
   const check=backup&&backup.trust===acceptedTrust?verifySnapshot(backup,guild.id):{ok:false};
   if(!backup||!check.ok||backup.integrityHash!==check.hash)
