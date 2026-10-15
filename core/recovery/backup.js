@@ -8,7 +8,7 @@ const slots=new Map();
 function fileFor(guildId){return path.join(dir,`${guildId}.json`);}
 function read(guildId){
   if(slots.has(guildId))return slots.get(guildId);
-  let value={main:null,secondary:null};
+  let value={main:null,previous:null,secondary:null};
   try{value=JSON.parse(fs.readFileSync(fileFor(guildId),"utf8"));}catch{}
   slots.set(guildId,value);
   return value;
@@ -51,18 +51,26 @@ async function capture(guild,{destructive=false,reason="verified server change"}
   const candidate=snapshot(guild),check=verifySnapshot(candidate,guild.id);
   if(!check.ok)throw new Error("Backup verification failed: "+check.reason);
   const db=read(guild.id);
+  if(!Object.prototype.hasOwnProperty.call(db,"previous"))db.previous=null;
   const packed={...candidate,integrityHash:check.hash,verifiedAt:check.verifiedAt,reason};
   if(destructive){
     db.secondary={...packed,trust:"UNTRUSTED_PENDING_REVIEW"};
     persist(guild.id,db);
     return {slot:"secondary",trust:db.secondary.trust,hash:check.hash};
   }
+  // Preserve the last independently integrity-checked MAIN before promoting a new one.
+  // Never promote a pending/destructive capture into either trusted slot.
+  if(db.main&&db.main.trust==="VERIFIED"){
+    const oldCheck=verifySnapshot(db.main,guild.id);
+    if(oldCheck.ok&&db.main.integrityHash===oldCheck.hash)db.previous=db.main;
+  }
   db.main={...packed,trust:"VERIFIED"};
+  db.previous=db.previous||null;
   db.secondary=db.secondary||null;
   persist(guild.id,db);
   return {slot:"main",trust:"VERIFIED",hash:check.hash};
 }
-function getSlots(guildId){const db=read(guildId);return {main:db.main,secondary:db.secondary};}
+function getSlots(guildId){const db=read(guildId);return {main:db.main,previous:db.previous||null,secondary:db.secondary};}
 function compareToMain(guild){
   const current=snapshot(guild),main=read(guild.id).main;
   if(!main)return {comparable:false,reason:"no_main_backup"};
