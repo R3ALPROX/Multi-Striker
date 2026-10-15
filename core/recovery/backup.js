@@ -8,7 +8,7 @@ const slots=new Map();
 function fileFor(guildId){return path.join(dir,`${guildId}.json`);}
 function read(guildId){
   if(slots.has(guildId))return slots.get(guildId);
-  let value={main:null,previous:null,secondary:null};
+  let value={main:null,previous:null,secondary:null,manual:null};
   try{value=JSON.parse(fs.readFileSync(fileFor(guildId),"utf8"));}catch{}
   slots.set(guildId,value);
   return value;
@@ -52,6 +52,7 @@ async function capture(guild,{destructive=false,reason="verified server change"}
   if(!check.ok)throw new Error("Backup verification failed: "+check.reason);
   const db=read(guild.id);
   if(!Object.prototype.hasOwnProperty.call(db,"previous"))db.previous=null;
+  if(!Object.prototype.hasOwnProperty.call(db,"manual"))db.manual=null;
   const packed={...candidate,integrityHash:check.hash,verifiedAt:check.verifiedAt,reason};
   if(destructive){
     db.secondary={...packed,trust:"UNTRUSTED_PENDING_REVIEW"};
@@ -70,7 +71,17 @@ async function capture(guild,{destructive=false,reason="verified server change"}
   persist(guild.id,db);
   return {slot:"main",trust:"VERIFIED",hash:check.hash};
 }
-function getSlots(guildId){const db=read(guildId);return {main:db.main,previous:db.previous||null,secondary:db.secondary};}
+async function saveManual(guild,actorId){
+  await guild.roles.fetch().catch(()=>{});
+  await guild.channels.fetch().catch(()=>{});
+  const candidate=snapshot(guild),check=verifySnapshot(candidate,guild.id);
+  if(!check.ok)throw new Error("Manual backup verification failed: "+check.reason);
+  const db=read(guild.id);
+  db.manual={...candidate,integrityHash:check.hash,verifiedAt:check.verifiedAt,reason:"manual moderator backup",createdBy:actorId,trust:"VERIFIED_MANUAL"};
+  persist(guild.id,db);
+  return {slot:"manual",hash:check.hash,capturedAt:candidate.capturedAt};
+}
+function getSlots(guildId){const db=read(guildId);return {main:db.main,previous:db.previous||null,secondary:db.secondary,manual:db.manual||null};}
 function compareToMain(guild){
   const current=snapshot(guild),main=read(guild.id).main;
   if(!main)return {comparable:false,reason:"no_main_backup"};
@@ -79,16 +90,15 @@ function compareToMain(guild){
   const roleNames=new Set(current.roles.map(x=>x.name)),channelIds=new Set(current.channels.map(x=>x.id));
   return {comparable:true,mainHash:main.integrityHash,currentHash:hash(current),missingRoles:main.roles.filter(r=>!current.roles.some(c=>c.name===r.name)),missingChannels:main.channels.filter(c=>!channelIds.has(c.id)),newRoles:current.roles.filter(r=>!main.roles.some(c=>c.name===r.name)),newChannels:current.channels.filter(c=>!main.channels.some(m=>m.id===c.id)),currentMatchesMain:hash({...current,capturedAt:main.capturedAt})===main.integrityHash};
 }
-async function restoreMissingStructure(guild){
+async function restoreMissingStructure(guild,requestedSlot="main"){
   const db=read(guild.id);
-  let backup=db.main,sourceSlot="main";
-  let check=backup&&backup.trust==="VERIFIED"?verifySnapshot(backup,guild.id):{ok:false};
-  if(!check.ok||backup.integrityHash!==check.hash){
-    backup=db.previous;sourceSlot="previous";
-    check=backup&&backup.trust==="VERIFIED"?verifySnapshot(backup,guild.id):{ok:false};
-  }
-  if(!backup||backup.trust!=="VERIFIED"||!check.ok||backup.integrityHash!==check.hash)
-    return {ok:false,reason:"no_integrity_valid_trusted_backup"};
+  const allowedSlots=new Set(["main","previous","secondary","manual"]);
+  if(!allowedSlots.has(requestedSlot))return {ok:false,reason:"invalid_backup_slot"};
+  const backup=db[requestedSlot];
+  const acceptedTrust=requestedSlot==="manual"?"VERIFIED_MANUAL":requestedSlot==="secondary"?"UNTRUSTED_PENDING_REVIEW":"VERIFIED";
+  const check=backup&&backup.trust===acceptedTrust?verifySnapshot(backup,guild.id):{ok:false};
+  if(!backup||!check.ok||backup.integrityHash!==check.hash)
+    return {ok:false,reason:"selected_backup_missing_or_integrity_check_failed",sourceSlot:requestedSlot};
   await guild.roles.fetch().catch(()=>{});await guild.channels.fetch().catch(()=>{});
   const before=snapshot(guild);
   const deletedChannels=backup.channels.filter(c=>!guild.channels.cache.has(c.id));
@@ -112,4 +122,4 @@ async function restoreMissingStructure(guild){
   report.note="Restores missing roles/channels only; it does not restore messages, member role assignments, integrations, webhooks, or all channel overwrites.";
   return report;
 }
-module.exports={capture,verifySnapshot,getSlots,compareToMain,restoreMissingStructure};
+module.exports={capture,saveManual,verifySnapshot,getSlots,compareToMain,restoreMissingStructure};
