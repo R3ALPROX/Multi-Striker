@@ -90,6 +90,20 @@ async function saveManual(guild,actorId){
   return {slot:"manual",hash:check.hash,capturedAt:candidate.capturedAt};
 }
 function getSlots(guildId){const db=read(guildId);return {main:db.main,previous:db.previous||null,secondary:db.secondary,manual:db.manual||null};}
+function promoteSecondary(guildId,actorId){
+  const db=read(guildId),candidate=db.secondary;
+  const check=candidate&&verifySnapshot(candidate,guildId);
+  if(!candidate||candidate.trust!=="UNTRUSTED_PENDING_REVIEW"||!check?.ok||candidate.integrityHash!==check.hash)
+    return {ok:false,reason:"secondary_missing_or_integrity_check_failed"};
+  if(db.main?.trust==="VERIFIED"){
+    const oldCheck=verifySnapshot(db.main,guildId);
+    if(oldCheck.ok&&db.main.integrityHash===oldCheck.hash)db.previous=db.main;
+  }
+  db.main={...candidate,trust:"VERIFIED",promotedBy:actorId,promotedAt:Date.now(),reason:"manually reviewed secondary promotion"};
+  db.secondary=null;
+  persist(guildId,db);
+  return {ok:true,hash:check.hash};
+}
 function compareToMain(guild){
   const current=snapshot(guild),main=read(guild.id).main;
   if(!main)return {comparable:false,reason:"no_main_backup"};
@@ -159,4 +173,4 @@ async function restoreMissingStructure(guild,requestedSlot="main"){
   report.note="Missing roles/channels and available permission overwrites are restored where Discord permissions allow. Member role assignments, messages, webhooks, integrations, and deleted forum posts/threads are not restored.";
   return report;
 }
-module.exports={capture,saveManual,verifySnapshot,getSlots,compareToMain,restoreMissingStructure};
+module.exports={capture,saveManual,verifySnapshot,getSlots,promoteSecondary,compareToMain,restoreMissingStructure};
