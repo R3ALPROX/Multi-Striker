@@ -11,18 +11,18 @@ const timers=new Map();
 async function safeCapture(guild,opts){
   try{return await capture(guild,opts);}catch(error){console.error("[VORHEX] Backup failed:",guild.id,error);}
 }
-function scheduleVerifiedMain(guild,reason){
+function scheduleReviewCapture(guild,reason){
   const old=timers.get(guild.id);if(old)clearTimeout(old);
-  const timer=setTimeout(()=>{void safeCapture(guild,{reason});timers.delete(guild.id);},2500);
+  const timer=setTimeout(()=>{void safeCapture(guild,{destructive:true,reason:"pending review: "+reason});timers.delete(guild.id);},2500);
   timers.set(guild.id,timer);
 }
 function registerAutoBackup(client){
-  client.on("guildMemberAdd",member=>{void safeCapture(member.guild,{reason:"member joined"});});
-  client.on("channelCreate",channel=>{if(channel.guild)scheduleVerifiedMain(channel.guild,"channel created");});
-  client.on("channelUpdate",(_old,channel)=>{if(channel.guild)scheduleVerifiedMain(channel.guild,"channel updated");});
-  client.on("roleCreate",role=>scheduleVerifiedMain(role.guild,"role created"));
-  client.on("roleUpdate",(_old,role)=>scheduleVerifiedMain(role.guild,"role updated"));
-  client.on("guildUpdate",(_old,guild)=>scheduleVerifiedMain(guild,"server settings updated"));
+  
+  client.on("channelCreate",channel=>{if(channel.guild)scheduleReviewCapture(channel.guild,"channel created");});
+  client.on("channelUpdate",(_old,channel)=>{if(channel.guild)scheduleReviewCapture(channel.guild,"channel updated");});
+  client.on("roleCreate",role=>scheduleReviewCapture(role.guild,"role created"));
+  client.on("roleUpdate",(_old,role)=>scheduleReviewCapture(role.guild,"role updated"));
+  client.on("guildUpdate",(_old,guild)=>scheduleReviewCapture(guild,"server settings updated"));
   client.on("guildAuditLogEntryCreate",async(entry,guild)=>{
     if(!destructive.has(entry.action))return;
     const saved=await safeCapture(guild,{destructive:true,reason:"destructive audit-log event"});
@@ -33,7 +33,7 @@ function registerAutoBackup(client){
       type:N.labels.critical,actor:entry.executorId||null,targetId:entry.targetId||null,
       evidence:`action=${entry.action}; secondary=${saved?.slot||"failed"}; recovery=${restore.ok?"attempted":"not applied"}; restoredChannels=${restore.restoredChannels?.length||0}; restoredRoles=${restore.restoredRoles?.length||0}; reason=${restore.reason||"none"}`
     }).catch(error=>console.error("[VORHEX] Recovery alert failed:",error));
-    scheduleVerifiedMain(guild,"post-recovery verified state");
+    scheduleReviewCapture(guild,"post-recovery state");
   });
 }
 module.exports={registerAutoBackup};
