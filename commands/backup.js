@@ -1,5 +1,5 @@
 const {SlashCommandBuilder,PermissionFlagsBits}=require("discord.js");
-const {saveManual,getSlots,restoreMissingStructure,verifySnapshot}=require("../core/recovery/backup");
+const {saveManual,getSlots,restoreMissingStructure,verifySnapshot,promoteSecondary}=require("../core/recovery/backup");
 
 const slotChoices=[
   {name:"MAIN — latest verified",value:"main"},
@@ -16,7 +16,7 @@ module.exports={
   .addSubcommand(s=>s.setName("list").setDescription("Show available backup slots"))
   .addSubcommand(s=>s.setName("manual").setDescription("Save or replace the moderator-controlled MANUAL backup")
     .addBooleanOption(o=>o.setName("confirm").setDescription("Confirm saving/replacing MANUAL").setRequired(true)))
-  .addSubcommand(s=>s.setName("restore").setDescription("Restore missing server structure from a selected backup")
+  .addSubcommand(s=>s.setName("promote").setDescription("Promote SECONDARY to MAIN after manual review")\n    .addBooleanOption(o=>o.setName("confirm").setDescription("Confirm you reviewed SECONDARY and trust its server state").setRequired(true)))\n  .addSubcommand(s=>s.setName("restore").setDescription("Restore missing server structure from a selected backup")
     .addStringOption(o=>o.setName("slot").setDescription("Backup to restore from").setRequired(true).addChoices(...slotChoices))
     .addBooleanOption(o=>o.setName("confirm").setDescription("Confirm this structural recovery operation").setRequired(true))),
  async execute(i){
@@ -40,6 +40,12 @@ module.exports={
       const saved=await saveManual(guild,i.user.id);
       return i.editReply("MANUAL backup saved and integrity-checked. It is separate from automatic rotation. Hash: "+saved.hash);
     }catch(error){return i.editReply("MANUAL backup failed: "+error.message);}
+  }
+  if(sub==="promote"){
+    if(!i.options.getBoolean("confirm"))return i.reply({content:"Cancelled. MAIN was not changed.",ephemeral:true});
+    const result=promoteSecondary(guild.id,i.user.id);
+    if(!result.ok)return i.reply({content:"Promotion refused: "+result.reason,ephemeral:true});
+    return i.reply({content:"SECONDARY was promoted to MAIN after your explicit confirmation. Previous MAIN was retained in PREV when valid. Hash: "+result.hash,ephemeral:true});
   }
   if(sub==="restore"){
     const slot=i.options.getString("slot");
