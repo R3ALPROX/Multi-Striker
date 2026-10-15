@@ -21,7 +21,7 @@ function persist(guildId,value){
   slots.set(guildId,value);
 }
 function stable(value){return JSON.stringify(value,Object.keys(value||{}).sort());}
-function hash(value){return crypto.createHash("sha256").update(JSON.stringify(value)).digest("hex");}
+function hash(value){const core={schema:value.schema,guildId:value.guildId,guildName:value.guildName,capturedAt:value.capturedAt,roles:value.roles,channels:value.channels};return crypto.createHash("sha256").update(JSON.stringify(core)).digest("hex");}
 function snapshot(guild){
   const roles=[...guild.roles.cache.values()].map(r=>({
     id:r.id,name:r.name,color:r.color,hoist:r.hoist,mentionable:r.mentionable,
