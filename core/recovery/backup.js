@@ -40,9 +40,18 @@ function snapshot(guild){
 function verifySnapshot(s,guildId){
   if(!s||s.schema!==1||s.guildId!==guildId||!Array.isArray(s.roles)||!Array.isArray(s.channels))return {ok:false,reason:"invalid_schema_or_guild"};
   if(s.roles.length>500||s.channels.length>500)return {ok:false,reason:"unexpected_snapshot_size"};
-  const roleNames=new Set(),channelNames=new Set();
-  for(const r of s.roles){if(typeof r.name!=="string"||typeof r.permissions!=="string"||roleNames.has(r.name))return {ok:false,reason:"invalid_or_duplicate_role"};roleNames.add(r.name);}
-  for(const c of s.channels){if(typeof c.name!=="string"||!Number.isInteger(c.type)||channelNames.has(c.id))return {ok:false,reason:"invalid_or_duplicate_channel"};channelNames.add(c.id);if(!Array.isArray(c.permissionOverwrites))return {ok:false,reason:"invalid_overwrites"};}
+  const roleIds=new Set(),channelIds=new Set();
+  for(const r of s.roles){
+    if(typeof r.id!=="string"||typeof r.name!=="string"||typeof r.permissions!=="string"||roleIds.has(r.id))
+      return {ok:false,reason:"invalid_or_duplicate_role_id"};
+    roleIds.add(r.id);
+  }
+  for(const c of s.channels){
+    if(typeof c.id!=="string"||typeof c.name!=="string"||!Number.isInteger(c.type)||channelIds.has(c.id))
+      return {ok:false,reason:"invalid_or_duplicate_channel_id"};
+    channelIds.add(c.id);
+    if(!Array.isArray(c.permissionOverwrites))return {ok:false,reason:"invalid_overwrites"};
+  }
   return {ok:true,hash:hash(s),verifiedAt:Date.now()};
 }
 async function capture(guild,{destructive=false,reason="verified server change"}={}){
