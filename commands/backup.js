@@ -16,7 +16,9 @@ module.exports={
   .addSubcommand(s=>s.setName("list").setDescription("Show available backup slots"))
   .addSubcommand(s=>s.setName("manual").setDescription("Save or replace the moderator-controlled MANUAL backup")
     .addBooleanOption(o=>o.setName("confirm").setDescription("Confirm saving/replacing MANUAL").setRequired(true)))
-  .addSubcommand(s=>s.setName("promote").setDescription("Promote SECONDARY to MAIN after manual review")\n    .addBooleanOption(o=>o.setName("confirm").setDescription("Confirm you reviewed SECONDARY and trust its server state").setRequired(true)))\n  .addSubcommand(s=>s.setName("restore").setDescription("Restore missing server structure from a selected backup")
+  .addSubcommand(s=>s.setName("promote").setDescription("Promote SECONDARY to MAIN after manual review")
+    .addBooleanOption(o=>o.setName("confirm").setDescription("Confirm you reviewed SECONDARY and trust its server state").setRequired(true)))
+  .addSubcommand(s=>s.setName("restore").setDescription("Restore missing server structure from a selected backup")
     .addStringOption(o=>o.setName("slot").setDescription("Backup to restore from").setRequired(true).addChoices(...slotChoices))
     .addBooleanOption(o=>o.setName("confirm").setDescription("Confirm this structural recovery operation").setRequired(true))),
  async execute(i){
