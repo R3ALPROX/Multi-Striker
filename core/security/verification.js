@@ -36,16 +36,16 @@ async function inspect(member){
     profile.decision="HUMAN_VERIFICATION_REQUIRED";
   }
 
-  profiles.set(member.id,profile);
+  profiles.set(`${member.guild.id}:${member.id}`,profile);
   return profile;
 }
 
-function getProfile(memberId){
-  return profiles.get(memberId)||null;
+function getProfile(guildId,memberId){
+  return profiles.get(`${guildId}:${memberId}`)||null;
 }
 
-function remove(memberId){
-  profiles.delete(memberId);
+function remove(guildId,memberId){
+  profiles.delete(`${guildId}:${memberId}`);
 }
 
 module.exports={inspect,getProfile,remove};
