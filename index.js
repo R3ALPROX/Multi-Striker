@@ -8,6 +8,8 @@ const {registerSecurityEvents}=require("./core/security/events");
 const {loadProfiles}=require("./core/identity/store");
 const {startLiveTicker}=require("./core/observability/dashboard");
 const {snapshotGuild}=require("./core/recovery/snapshot");
+const {registerAutoBackup}=require("./core/recovery/autoBackup");
+const {capture}=require("./core/recovery/backup");
 const {getGuildConfig}=require("./core/config/store");
 const {recordSnapshot}=require("./core/observability/dashboard");
 const {sendLog}=require("./core/observability/logger");
@@ -29,6 +31,7 @@ client.on("interactionCreate",async i=>{if(i.isButton()){await handleHumanVerifi
 async function registerCommands(guild){await guild.commands.set(commands.map(c=>c.data));}
 registerSecurityEvents(client);
 registerDefense(client);
+registerAutoBackup(client);
 startLiveTicker(client);
 setInterval(()=>{for(const guild of client.guilds.cache.values()){const cfg=getGuildConfig(guild.id);if(!cfg.security?.initialized||!cfg.security?.enabled)continue;const s=snapshotGuild(guild);if(s){recordSnapshot(guild,s);}}},5*60*1000).unref();
 if(!process.env.DISCORD_TOKEN)throw new Error("DISCORD_TOKEN is required");
